@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>Test Maker Teacher Side</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Slab:wght@400;600;700&family=Roboto+Mono:wght@700&display=swap">
+<style>
+/* Layout: Tool Hero, Admin Bar, then an object-card grid (library) or three stage cards (builder). Light only, like every TBT page. */
+:root{
+  --tbt-blue:#0856C9; --tbt-blue-dark:#063F94;
+  --tbt-canvas:#F6F8FC; --tbt-surface:#FFFFFF; --tbt-input:#F0F5FE; --tbt-selected-bg:#EDF4FF;
+  --tbt-border:#D8E3F0; --tbt-ink:#1F2937; --tbt-muted:#667085; --tbt-faint:#8299B8;
+  --tbt-success:#16803C; --tbt-success-bg:#ECFDF3; --tbt-error:#C62828; --tbt-error-bg:#FFF1F1;
+  --tbt-white:#FFFFFF; --tbt-hero-soft:rgba(255,255,255,.82);
+  --tbt-shadow:0 6px 20px rgba(24,56,96,.07); --tbt-shadow-raised:0 10px 28px rgba(8,86,201,.12);
+  --tbt-focus-ring:0 0 0 3px rgba(8,86,201,.18);
+  --ui:"Roboto",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --content:"Roboto Slab",Georgia,serif;
+  --identity:"Roboto Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--tbt-canvas);color:var(--tbt-ink);font:400 16px/1.5 var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 64px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:none;box-shadow:var(--tbt-focus-ring)}
+h2,h3,p{margin:0}
+
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);
+  border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface)}
+.proto b{color:var(--tbt-ink);font-weight:600}
+.spacer{flex:1}
+.linkbtn{background:none;border:0;padding:4px;color:var(--tbt-blue);font-weight:600;font-size:14px;border-radius:6px}
+.linkbtn:hover{text-decoration:underline}
+
+.hero{background:linear-gradient(135deg,var(--tbt-blue),var(--tbt-blue-dark));color:var(--tbt-white);border-radius:22px;padding:32px 40px}
+.hero .eyebrow{font:700 12px/1.2 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--tbt-hero-soft);margin:0 0 6px}
+.hero h1{font:700 34px/1.15 var(--identity);letter-spacing:.02em;text-transform:uppercase;margin:0}
+.hero .support{margin:8px 0 0;color:var(--tbt-hero-soft)}
+
+/* Admin Bar */
+.abar{display:flex;align-items:center;gap:10px;margin-top:24px}
+.abar .title{min-width:234px;font:700 28px/1.2 var(--content);color:var(--tbt-blue);letter-spacing:-.01em;margin:0}
+.abar .line{flex:1;height:1px;background:var(--tbt-border)}
+.abar .search{position:relative;width:300px;flex:none}
+.abar .search input{width:100%;height:44px;border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:0 40px;font:400 16px var(--ui);color:var(--tbt-ink)}
+.abar .search input:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.abar .search svg{position:absolute;left:14px;top:13px;color:var(--tbt-muted)}
+.abar .search .x{position:absolute;right:6px;top:6px;width:32px;height:32px;border:0;background:none;color:var(--tbt-muted);font-size:18px;border-radius:8px}
+.pillcta{flex:none;width:250px;height:53px;border-radius:999px;border:0;background:var(--tbt-blue);color:var(--tbt-white);font:600 16px var(--ui);text-transform:uppercase;letter-spacing:.08em}
+.pillcta:hover{background:var(--tbt-blue-dark)}
+.summary{font-size:14px;color:var(--tbt-muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* library */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px}
+.card{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--tbt-shadow);transition:box-shadow .2s}
+.card:hover{box-shadow:var(--tbt-shadow-raised)}
+.card h3{font:700 18px/1.35 var(--content);text-wrap:balance}
+.card .meta{font-size:14px;color:var(--tbt-muted);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.status{border-radius:999px;padding:2px 10px;font:600 12px var(--ui)}
+.status.pub{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.status.draft{background:var(--tbt-input);color:var(--tbt-muted)}
+.card .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
+.empty{color:var(--tbt-muted);padding:32px 0}
+
+/* buttons */
+.btn{height:44px;padding:0 20px;border-radius:12px;font-weight:600;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-blue-dark)}
+.btn:hover{background:var(--tbt-selected-bg)}
+.btn.sm{height:36px;padding:0 14px;font-size:14px;border-radius:10px}
+.btn.primary{background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white)}
+.btn.primary:hover{background:var(--tbt-blue-dark)}
+.btn.ghost{border-color:transparent;background:none}
+.btn.ghost:hover{background:var(--tbt-selected-bg)}
+.btn.danger{color:var(--tbt-error);border-color:transparent;background:none}
+.btn.danger:hover{background:var(--tbt-error-bg)}
+.btn:disabled{opacity:.5;cursor:default}
+.icon{width:40px;height:40px;border-radius:10px;border:0;background:none;color:var(--tbt-muted);font-size:18px;padding:0}
+.icon:hover{background:var(--tbt-selected-bg);color:var(--tbt-blue)}
+.icon.del:hover{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.icon:disabled{opacity:.3;cursor:default;background:none}
+
+/* builder */
+.back{align-self:flex-start}
+.stage{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:22px;box-shadow:var(--tbt-shadow);padding:40px;display:flex;flex-direction:column;gap:24px}
+.stage > h2{font:700 22px/1.3 var(--content)}
+.stage > .sub{color:var(--tbt-muted);margin-top:-16px}
+.stages{display:flex;flex-direction:column;gap:40px}
+.field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.field > label,.field > .lab{font-weight:600}
+.field .hint{font-size:14px;color:var(--tbt-muted)}
+input[type=text],input[type=number],textarea{border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:10px 16px;font:400 16px/1.5 var(--ui);color:var(--tbt-ink);width:100%}
+input[type=text],input[type=number]{height:44px;padding-block:0}
+input:focus,textarea:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.slab{font-family:var(--content) !important}
+textarea{resize:vertical;min-height:88px}
+
+.q{border:1px solid var(--tbt-border);border-radius:16px;background:var(--tbt-surface)}
+.q.open{border-color:var(--tbt-blue)}
+.q.bad{border-color:var(--tbt-error)}
+.qhead{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 16px}
+.qhead .n{flex:none;width:36px;height:36px;border-radius:10px;background:var(--tbt-selected-bg);color:var(--tbt-blue-dark);font-weight:600;display:grid;place-content:center;font-variant-numeric:tabular-nums}
+.qhead .sum{flex:1;min-width:0;border:0;background:none;text-align:left;padding:8px;border-radius:8px;font:400 16px/1.4 var(--content);color:var(--tbt-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qhead .sum.blank{color:var(--tbt-faint)}
+.qhead .ok{flex:none;font-size:13px;color:var(--tbt-faint)}
+.qhead .ok.miss{color:var(--tbt-error);font-weight:600}
+.qbody{padding:8px 24px 24px;display:flex;flex-direction:column;gap:24px;border-top:1px solid var(--tbt-border);padding-top:24px}
+.ans{display:flex;flex-direction:column;gap:8px}
+.arow{display:flex;align-items:center;gap:8px}
+.arow .let{flex:none;width:20px;color:var(--tbt-muted);font-family:var(--content)}
+.arow input[type=radio]{appearance:none;flex:none;width:22px;height:22px;border:2px solid var(--tbt-muted);border-radius:50%;margin:0;display:grid;place-content:center;cursor:pointer}
+.arow input[type=radio]:checked{border-color:var(--tbt-success);background:var(--tbt-success)}
+.arow input[type=radio]:checked::before{content:"✓";color:var(--tbt-white);font-size:13px;font-weight:700;line-height:1}
+.arow input[type=radio]:focus-visible{box-shadow:var(--tbt-focus-ring);outline:none}
+.arow.right input[type=text]{background:var(--tbt-success-bg)}
+.rowline{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+
+.seg{display:inline-flex;border:1px solid var(--tbt-border);border-radius:12px;overflow:hidden;align-self:flex-start}
+.seg label{padding:10px 16px;cursor:pointer;font-weight:500;color:var(--tbt-muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--tbt-selected-bg);color:var(--tbt-blue-dark);font-weight:600}
+.seg label:has(input:focus-visible){box-shadow:inset var(--tbt-focus-ring)}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px}
+.pct{display:flex;align-items:center;gap:8px}
+.pct input{width:110px}
+.switch{display:flex;align-items:center;gap:12px;cursor:pointer}
+.switch input{appearance:none;width:44px;height:26px;border-radius:999px;background:var(--tbt-border);position:relative;margin:0;flex:none;transition:background .15s;cursor:pointer}
+.switch input::before{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--tbt-white);transition:transform .15s}
+.switch input:checked{background:var(--tbt-blue)}
+.switch input:checked::before{transform:translateX(18px)}
+.switch input:focus-visible{box-shadow:var(--tbt-focus-ring);outline:none}
+
+select{height:44px;border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:0 12px;font:400 16px var(--ui);color:var(--tbt-ink);width:100%}
+select:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.imp{border:1px solid var(--tbt-border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:24px;background:var(--tbt-canvas)}
+.imp h3{font:700 18px/1.3 var(--content)}
+.tblwrap{overflow-x:auto;border:1px solid var(--tbt-border);border-radius:12px;background:var(--tbt-surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--tbt-border);vertical-align:top;white-space:pre-line}
+th{font-weight:600;color:var(--tbt-muted);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.qc{font-family:var(--content);min-width:220px}
+tr.badrow td{background:var(--tbt-error-bg)}
+td .prob{color:var(--tbt-error);font-weight:600}
+td .fine{color:var(--tbt-success);font-weight:600}
+.imp textarea{font-family:ui-monospace,Consolas,monospace;font-size:14px;min-height:120px;background:var(--tbt-surface);border-color:var(--tbt-border)}
+.feat{display:block;max-width:420px;width:100%;border-radius:12px;border:1px solid var(--tbt-border)}
+/* results */
+.rhead{display:flex;flex-direction:column;gap:8px}
+.rhead h2{font:700 28px/1.25 var(--content);color:var(--tbt-blue);letter-spacing:-.01em;text-wrap:balance}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+.stat{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:16px;padding:16px 24px}
+.stat .v{font:700 28px/1.2 var(--content);font-variant-numeric:tabular-nums}
+.stat .k{font-size:14px;color:var(--tbt-muted)}
+.rtools{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}
+.rtools .search{position:relative;width:300px;max-width:100%}
+.rtools .search input{padding-left:16px}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--tbt-blue);margin:0}
+.rt td,.rt th{white-space:nowrap;vertical-align:middle}
+.rt td.name{font-weight:600;white-space:normal}
+.rt .guest{font-weight:400;color:var(--tbt-faint);font-size:13px;margin-left:6px}
+.rt tr.att{cursor:pointer}
+.rt tr.att:hover td{background:var(--tbt-selected-bg)}
+.rt tr.att.sel td{background:var(--tbt-selected-bg)}
+.rt td.num{font-variant-numeric:tabular-nums}
+.meter{display:inline-block;width:72px;height:6px;border-radius:999px;background:var(--tbt-input);vertical-align:middle;margin-left:10px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--tbt-blue);border-radius:999px}
+.rt td.detail{white-space:normal;background:var(--tbt-canvas);padding:16px 24px}
+.alist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.alist li{display:grid;grid-template-columns:24px 1fr;gap:2px 8px;font-size:14px}
+.alist .m{font-weight:700}
+.alist .okm{color:var(--tbt-success)}.alist .badm{color:var(--tbt-error)}
+.alist .qq{font-family:var(--content);font-size:15px}
+.alist .aa{grid-column:2;color:var(--tbt-muted)}
+.alist .aa b{font-weight:600}
+.alist .aa .y{color:var(--tbt-error)}.alist .aa .r{color:var(--tbt-success)}
+.hard{display:flex;flex-direction:column;gap:12px;list-style:none;margin:0;padding:0}
+.hard li{display:grid;grid-template-columns:64px 1fr;gap:16px;align-items:baseline}
+.hard .p{font:700 18px var(--content);color:var(--tbt-error);font-variant-numeric:tabular-nums}
+.hard .t{font-family:var(--content);min-width:0}
+.hard .t span{display:block;font:400 14px var(--ui);color:var(--tbt-muted)}
+.savebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.note{border-radius:12px;padding:12px 16px;font-size:15px}
+.note.err{background:var(--tbt-error-bg);color:var(--tbt-error);border:1px solid var(--tbt-error)}
+.note.ok{background:var(--tbt-success-bg);color:var(--tbt-success);border:1px solid var(--tbt-success)}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;color:var(--tbt-error)}
+
+@media (max-width:1100px){
+  .abar{flex-wrap:wrap}.abar .line{display:none}
+  .abar .title{flex:1;min-width:0}
+  .abar .search{order:3;width:100%}
+}
+@media (max-width:640px){
+  .hero{padding:24px}.hero h1{font-size:24px}
+  .stage{padding:24px}.qbody{padding:16px}
+  .pillcta{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+
+<div class="wrap">
+  <div class="proto">
+    <span><b>Prototype</b> · what the teacher sees. The tests listed are examples.</span>
+    <span class="spacer"></span>
+    <button class="linkbtn" id="reset" type="button">Start over</button>
+  </div>
+  <header class="hero">
+    <p class="eyebrow">The Blue Tree</p>
+    <h1>Test Maker</h1>
+    <p class="support">Build tests your students take one question at a time.</p>
+  </header>
+  <main id="app"></main>
+</div>
+
+<script>
+const L = "abcdef";
+let uid = 1;
+const mkq = (text, opts, key) => ({id:uid++, text, opts:opts.slice(), key});
+const CLASSES = [{id:"c1", name:"B2 Tuesday group"}, {id:"c2", name:"C1 Business English"}, {id:"c3", name:"Matura 2027"}];
+const LESSONS = [{id:"l1", name:"3 November"}, {id:"l2", name:"10 November"}, {id:"l3", name:"17 November"}];
+const className = id => (CLASSES.find(c=>c.id===id)||{}).name || "";
+const TEMPLATE = [["question","answer_a","answer_b","answer_c","answer_d","correct"],
+  ["Tom: This weather is just horrible today.\nJenny: You can say that again!\n\nCo Jenny ma na myśli?","Masz całkowitą rację.","Nie jestem pewien.","Powtórz to głośniej.","","a"],
+  ["Które zdanie jest poprawne?","I am agree with you.","I agree to you.","I agree with you.","I agree you.","c"]];
+const GRAMMAR = [
+  ["She ___ to work by bus every day.", ["go","goes","is going"], 1],
+  ["I ___ never been to Chile.", ["have","has","am"], 0],
+  ["If it rains, we ___ at home.", ["stay","stayed","will stay"], 2],
+  ["This is the ___ film I have ever seen.", ["good","better","best"], 2],
+  ["He asked me where I ___.", ["live","lived","do live"], 1]
+];
+function seed(){
+  uid = 1;
+  return [
+    {id:"t1", title:"Expressing Opinions in English", intro:"Check how well you understand the phrases people use to agree, disagree and give an opinion.",
+     status:"pub", attempts:14, feedback:"end", bulls:true, pass:"", classId:"c1", lesson:"", access:"login", cert:true,
+     questions:[
+       mkq("Tom: This weather is just horrible today.\nJenny: You can say that again!\n\nCo Jenny ma na myśli, mówiąc: “You can say that again!”", ["Masz całkowitą rację.","Nie jestem pewien.","Powtórz to głośniej."], 0),
+       mkq("Alita: Working from home is the future.\nPete: I couldn’t agree more.\n\nCo Pete ma na myśli?", ["Nie mogę się z tym zgodzić.","Zgadzam się w stu procentach.","Zgadzam się tylko częściowo."], 1),
+       mkq("_____, the film was far too long.\n\nKtóry zwrot poprawnie wprowadza opinię?", ["According to me","In my meaning","As far as I’m concerned"], 2),
+       mkq("Sven: We should cancel the meeting.\nKat: I’m not so sure about that.\n\nCo robi Kat?", ["Grzecznie wyraża wątpliwość.","Zgadza się ze Svenem.","Prosi o powtórzenie."], 0),
+       mkq("Które zdanie jest poprawne?", ["I am agree with you.","I agree to you.","I agree with you."], 2)
+     ]},
+    {id:"t2", title:"General English Grammar – Diagnostic Test", intro:"One hundred questions, from beginner to advanced.",
+     status:"pub", attempts:37, feedback:"end", bulls:true, pass:"", classId:"", lesson:"", access:"open", cert:false,
+     questions:Array.from({length:100}, (_,i)=>mkq(...GRAMMAR[i%GRAMMAR.length]))},
+    {id:"t3", title:"Phrasal verbs: travel", intro:"", status:"draft", attempts:0, feedback:"now", bulls:true, pass:"70", classId:"c2", lesson:"l2", access:"login", cert:false,
+     questions:[ mkq("We ___ at six in the morning to catch the first ferry.", ["set off","set up","set in"], 0),
+                 mkq("The plane ___ two hours late.", ["took up","took off","took over"], 1) ]}
+  ];
+}
+// Example attempts, generated the same way every time so the numbers stay put.
+const NAMES = ["Ola","Bartek","Kasia","Michał","Zuzanna","Piotr","Agnieszka","Tomek","Julia","Marek","Ewa","Krzysztof","Natalia","Wojtek"];
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const NOW = new Date(2026, 10, 11, 21, 30);
+const attemptCache = {};
+function attemptsFor(t){
+  if(attemptCache[t.id]) return attemptCache[t.id];
+  const r = rng(t.id.charCodeAt(1)*977 + t.questions.length), n = t.questions.length;
+  const hard = t.questions.map(()=>0.15 + r()*0.6);
+  const list = Array.from({length:t.attempts}, (_,i)=>{
+    const who = Math.floor(r()*NAMES.length), skill = 0.35 + ((who*37)%60)/100;
+    const answers = t.questions.map((q,k)=>{ if(r() < 0.02) return null;
+      if(r() < Math.min(0.97, skill + (1-hard[k])*0.45)) return q.key;
+      const wrong = q.opts.map((_,x)=>x).filter(x=>x!==q.key); return wrong[Math.floor(r()*wrong.length)]; });
+    const score = answers.filter((a,k)=>a===t.questions[k].key).length;
+    const when = new Date(NOW.getTime() - Math.floor(r()*21*24*60)*60000 - i*3600000);
+    return {id:t.id+"-"+i, name:NAMES[who], guest:t.access==="open" && r()<0.6, answers, score, pct:Math.round(score/n*100),
+      secs:Math.round(n*(18+r()*30)), when};
+  }).sort((a,b)=>b.when-a.when);
+  return attemptCache[t.id] = list;
+}
+const fmtDate = d => d.toLocaleDateString("en-GB",{day:"numeric",month:"short"}) + ", " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+const fmtTime = s => s>=3600 ? Math.floor(s/3600)+" h "+Math.round(s%3600/60)+" min" : Math.floor(s/60)+" min "+String(s%60).padStart(2,"0")+" s";
+let res = null;
+let tests = seed(), view = "lib", search = "", draft = null, openQ = null, msg = null, confirmDel = null, copied = null, imp = null;
+const app = document.getElementById("app");
+const esc = t => String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fold = t => t.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ł/g,"l").toLowerCase();
+const problems = q => { const p=[]; if(!q.text.trim()) p.push("no question text");
+  if(q.opts.filter(o=>o.trim()).length<2) p.push("needs two answers"); if(q.key===null || !(q.opts[q.key]||"").trim()) p.push("no correct answer"); return p; };
+
+function render(){ app.innerHTML = view==="lib" ? library() : view==="res" ? results() : builder(); }
+
+function library(){
+  const q = fold(search.trim());
+  const list = tests.filter(t => !q || fold(t.title).includes(q) || t.questions.some(x=>fold(x.text).includes(q)));
+  const has = tests.length>0;
+  return `
+    <div class="abar">
+      <h2 class="title">Your tests</h2>
+      <span class="line" aria-hidden="true"></span>
+      ${has ? `<div class="search"><label class="sr" for="search">Search your tests</label>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="search" type="text" placeholder="Search…" value="${esc(search)}">
+        ${search ? `<button class="x" type="button" data-act="clear" aria-label="Clear search">×</button>` : ""}</div>
+      <span class="line" aria-hidden="true"></span>` : ""}
+      <button class="pillcta" type="button" data-act="new">Create new test</button>
+    </div>
+    ${search ? `<p class="summary" style="margin-top:12px">${list.length} of ${tests.length} tests · <button class="linkbtn" type="button" data-act="clear">Clear filters</button></p>` : ""}
+    <div class="grid" style="margin-top:24px">
+      ${list.map(t=>`
+        <article class="card">
+          <h3>${esc(t.title)}</h3>
+          <div class="meta"><span class="status ${t.status}">${t.status==="pub"?"Published":"Draft"}</span>
+            <span>${t.questions.length} question${t.questions.length===1?"":"s"}</span>
+            ${t.status==="pub" ? `<span>${t.attempts} attempt${t.attempts===1?"":"s"}</span>` : ""}
+            <span>${t.classId ? esc(className(t.classId)) : "Not in a class"}</span></div>
+          ${confirmDel===t.id ? `<div class="confirm"><span>Delete this test${t.attempts?` and its ${t.attempts} results`:""}?</span>
+              <button class="btn sm danger" type="button" data-act="del-yes" data-id="${t.id}">Delete test</button>
+              <button class="btn sm ghost" type="button" data-act="del-no">Cancel</button></div>`
+          : `<div class="acts">
+              <button class="btn sm" type="button" data-act="edit" data-id="${t.id}">Edit</button>
+              ${t.status==="pub" ? `<button class="btn sm ghost" type="button" data-act="copy" data-id="${t.id}">${copied===t.id?"Link copied":"Copy link"}</button>` : ""}
+              ${t.status==="pub" ? `<button class="btn sm ghost" type="button" data-act="results" data-id="${t.id}">Results</button>` : ""}
+              <span class="spacer"></span>
+              <button class="btn sm danger" type="button" data-act="del" data-id="${t.id}">Delete</button>
+            </div>`}
+        </article>`).join("")}
+    </div>
+    ${has && !list.length ? `<p class="empty">No tests match your search. <button class="linkbtn" type="button" data-act="clear">Clear filters</button></p>` : ""}
+    ${!has ? `<p class="empty">You have no tests yet. Create the first one.</p>` : ""}`;
+}
+
+function results(){
+  const t = tests.find(x=>x.id===res.id), all = attemptsFor(t), n = t.questions.length, pass = +t.pass || 0;
+  const q = fold(res.search.trim());
+  let list = all.filter(a=>!q || fold(a.name).includes(q));
+  if(res.best){ const top = {}; list.forEach(a=>{ if(!top[a.name] || a.score>top[a.name].score) top[a.name]=a; }); list = list.filter(a=>top[a.name]===a); }
+  const avg = all.length ? Math.round(all.reduce((s,a)=>s+a.pct,0)/all.length) : 0;
+  const people = new Set(all.map(a=>a.name)).size, best = all.reduce((m,a)=>Math.max(m,a.pct),0);
+  const rate = t.questions.map((qq,k)=>({k, pct: all.length ? Math.round(all.filter(a=>a.answers[k]===qq.key).length/all.length*100) : 0}));
+  const hardest = rate.slice().sort((a,b)=>a.pct-b.pct).slice(0,3);
+  const cols = pass ? 6 : 5;
+  return `
+    <button class="btn ghost back" type="button" data-act="back" style="margin-top:8px">← Back to tests</button>
+    <div class="stages" style="margin-top:16px;gap:32px">
+      <div class="rhead"><h2>${esc(t.title)}</h2>
+        <p class="summary">${n} questions · ${t.classId ? esc(className(t.classId)) : "Not in a class"} · ${t.access==="open" ? "Anyone with the link" : "Logged-in students"}${pass ? ` · Pass mark ${pass}%` : ""}</p></div>
+      ${all.length ? `
+      <div class="stats">
+        <div class="stat"><div class="v">${all.length}</div><div class="k">attempts by ${people} ${people===1?"person":"people"}</div></div>
+        <div class="stat"><div class="v">${avg}%</div><div class="k">average score</div></div>
+        <div class="stat"><div class="v">${best}%</div><div class="k">best score</div></div>
+        ${pass ? `<div class="stat"><div class="v">${all.filter(a=>a.pct>=pass).length} of ${all.length}</div><div class="k">passed</div></div>` : ""}
+      </div>
+      <section class="stage">
+        <h2>Attempts</h2>
+        <div class="rtools">
+          <div class="search"><label class="sr" for="rsearch">Search students</label><input id="rsearch" type="text" placeholder="Search students…" value="${esc(res.search)}"></div>
+          <label class="check" for="rbest"><input id="rbest" type="checkbox" ${res.best?"checked":""}> Best attempt per student</label>
+          <span class="spacer"></span><span class="summary">${list.length} of ${all.length} shown</span>
+        </div>
+        <div class="tblwrap"><table class="rt">
+          <thead><tr><th>Student</th><th>Finished</th><th>Score</th><th>Time</th>${pass?"<th>Result</th>":""}<th><span class="sr">Open</span></th></tr></thead>
+          <tbody>${list.map(a=>{ const open = res.open===a.id;
+            return `<tr class="att ${open?"sel":""}" data-att="${a.id}">
+              <td class="name">${esc(a.name)}${a.guest?`<span class="guest">no login</span>`:""}</td>
+              <td>${fmtDate(a.when)}</td>
+              <td class="num">${a.score} / ${n} · ${a.pct}%<span class="meter" aria-hidden="true"><i style="width:${a.pct}%"></i></span></td>
+              <td class="num">${fmtTime(a.secs)}</td>
+              ${pass ? `<td><span class="status ${a.pct>=pass?"pub":"draft"}">${a.pct>=pass?"Passed":"Not passed"}</span></td>` : ""}
+              <td><button class="btn sm ghost" type="button" data-act="att" data-att="${a.id}" aria-expanded="${open}">${open?"Close":"Answers"}</button></td></tr>
+              ${open ? `<tr><td class="detail" colspan="${cols}">${detail(t,a)}</td></tr>` : ""}`; }).join("")}
+          </tbody></table></div>
+        ${list.length ? "" : `<p class="empty">No students match your search.</p>`}
+      </section>
+      <section class="stage">
+        <h2>Hardest questions</h2>
+        <p class="sub">The three questions students got wrong most often.</p>
+        <ul class="hard">${hardest.map(x=>{ const qq=t.questions[x.k], line=qq.text.trim().split("\n").filter(Boolean).pop();
+          return `<li><span class="p">${x.pct}%</span><span class="t">${x.k+1}. ${esc(line)}<span>${x.pct}% answered correctly. Correct answer: ${esc(qq.opts[qq.key])}</span></span></li>`; }).join("")}</ul>
+      </section>` : `<p class="empty">Nobody has taken this test yet. Results appear here as soon as a student finishes.</p>`}
+    </div>`;
+}
+function detail(t, a){
+  const wrong = t.questions.map((q,k)=>k).filter(k=>a.answers[k]!==t.questions[k].key);
+  const show = res.all ? t.questions.map((q,k)=>k) : wrong;
+  return `<div class="rowline" style="margin-bottom:12px"><strong>${wrong.length ? `${wrong.length} wrong answer${wrong.length===1?"":"s"}` : "Every answer correct"}</strong>
+      <button class="linkbtn" type="button" data-act="att-all">${res.all ? "Show wrong answers only" : "Show all answers"}</button>
+      <span class="spacer"></span>
+      ${res.del===a.id ? `<span class="confirm">Remove this attempt? <button class="btn sm danger" type="button" data-act="att-del-yes" data-att="${a.id}">Remove attempt</button>
+          <button class="btn sm ghost" type="button" data-act="att-del-no">Cancel</button></span>`
+        : `<button class="btn sm danger" type="button" data-act="att-del" data-att="${a.id}">Remove attempt</button>`}</div>
+    <ul class="alist">${show.map(k=>{ const q=t.questions[k], v=a.answers[k], ok=v===q.key, line=q.text.trim().split("\n").filter(Boolean).pop();
+      return `<li><span class="m ${ok?"okm":"badm"}">${ok?"✓":"✗"}</span><span class="qq">${k+1}. ${esc(line)}</span>
+        <span class="aa">${ok ? `<b class="r">${esc(q.opts[v])}</b>` : `Answered: <b class="y">${v===null?"no answer":esc(q.opts[v])}</b> · Correct: <b class="r">${esc(q.opts[q.key])}</b>`}</span></li>`; }).join("")}</ul>`;
+}
+
+function builder(){
+  const d = draft, bad = msg && msg.type==="err";
+  return `
+    <button class="btn ghost back" type="button" data-act="back" style="margin-top:8px">← Back to tests</button>
+    <div class="stages" style="margin-top:16px">
+      <section class="stage">
+        <h2>About the test</h2>
+        <div class="field"><label for="f-title">Title</label>
+          <input class="slab" id="f-title" type="text" data-f="title" value="${esc(d.title)}" placeholder="e.g. Expressing Opinions in English"></div>
+        <div class="field"><label for="f-intro">Introduction</label>
+          <textarea class="slab" id="f-intro" data-f="intro" placeholder="One or two sentences the student reads before starting.">${esc(d.intro)}</textarea></div>
+        <div class="field"><span class="lab">Feature image</span>
+          ${d.image ? `<img class="feat" src="${d.image}" alt="Feature image preview">` : ""}
+          <div class="rowline"><label class="btn sm" for="f-img" style="display:inline-flex;align-items:center">${d.image?"Change image":"Choose image"}</label>
+            <input class="sr" id="f-img" type="file" accept="image/*">
+            ${d.image ? `<button class="btn sm danger" type="button" data-act="img-del">Remove image</button>` : ""}</div>
+          <span class="hint">Optional. Shown on the start screen, above the introduction. In the plugin this opens the WordPress media library.</span></div>
+      </section>
+
+      <section class="stage">
+        <h2>Settings</h2>
+        <div class="settings">
+          <div class="field"><label for="f-class">Class</label>
+            <select id="f-class" data-f="classId"><option value="">Not in a class</option>${CLASSES.map(c=>`<option value="${c.id}" ${d.classId===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select>
+            ${d.classId ? `<label class="sr" for="f-lesson">Lesson</label><select id="f-lesson" data-f="lesson"><option value="">Any lesson</option>${LESSONS.map(l=>`<option value="${l.id}" ${d.lesson===l.id?"selected":""}>${esc(l.name)}</option>`).join("")}</select>` : ""}
+            <span class="hint">${d.classId ? "The test shows in this class in TBT Notes, like a Swipe deck or a drill." : "Attach the test to a class to show it in TBT Notes."}</span></div>
+          <div class="field"><span class="lab">Who can take it</span>
+            <div class="seg" role="radiogroup" aria-label="Who can take it">
+              <label><input type="radio" name="acc" value="login" ${d.access==="login"?"checked":""}>Logged-in students</label>
+              <label><input type="radio" name="acc" value="open" ${d.access==="open"?"checked":""}>Anyone with the link</label>
+            </div>
+            <span class="hint">${d.access==="login" ? "Students log in first. Results are saved under their name." : "No login. People type their name before they start."}</span></div>
+          <div class="field"><span class="lab">Feedback</span>
+            <div class="seg" role="radiogroup" aria-label="Feedback">
+              <label><input type="radio" name="fb" value="end" ${d.feedback==="end"?"checked":""}>At the end</label>
+              <label><input type="radio" name="fb" value="now" ${d.feedback==="now"?"checked":""}>After each question</label>
+            </div>
+            <span class="hint">${d.feedback==="end" ? "Students see what they got right on the result screen." : "Students check each answer before moving on."}</span></div>
+          <div class="field"><label for="f-pass">Pass mark</label>
+            <div class="pct"><input id="f-pass" type="number" min="1" max="100" data-f="pass" value="${esc(d.pass)}" placeholder="Not set"><span>%</span></div>
+            <span class="hint">Leave empty for a test with a score but no pass or fail.</span></div>
+          <div class="field"><span class="lab">Certificate</span>
+            <label class="switch" for="f-cert"><input id="f-cert" type="checkbox" ${d.cert?"checked":""}><span>${d.cert?"On":"Off"}</span></label>
+            <span class="hint">${d.pass ? "Students who pass can download a certificate with their name and score." : "Students who finish can download a certificate with their name and score."}</span></div>
+          <div class="field"><span class="lab">Email the result</span>
+            <label class="switch" for="f-mail"><input id="f-mail" type="checkbox" ${d.mail?"checked":""}><span>${d.mail?"On":"Off"}</span></label>
+            <span class="hint">${d.mail ? `Students get their score by email when they finish${d.cert ? ", with the certificate" : ""}.${d.access==="open" ? " People without a login type their email before they start." : ""}` : "Results are always saved for you. Turn this on to send them to the student too."}</span></div>
+          <div class="field"><span class="lab">Bull pictures</span>
+            <label class="switch" for="f-bulls"><input id="f-bulls" type="checkbox" ${d.bulls?"checked":""}><span>${d.bulls?"On":"Off"}</span></label>
+            <span class="hint">At the start, in the middle, near the end and at the end.</span></div>
+        </div>
+      </section>
+
+      <section class="stage">
+        <h2>Questions</h2>
+        <p class="sub">${d.questions.length} question${d.questions.length===1?"":"s"}. Click a question to open it. Mark the correct answer with the circle.</p>
+        ${d.questions.map((q,i)=>question(q,i,bad)).join("")}
+        <div class="rowline"><button class="btn" type="button" data-act="addq">Add question</button>
+          ${imp ? "" : `<button class="btn ghost" type="button" data-act="imp-open">Import questions</button>`}</div>
+        ${imp ? importer() : ""}
+      </section>
+
+      <div class="savebar">
+        ${msg ? `<p class="note ${msg.type}" role="${msg.type==="err"?"alert":"status"}">${esc(msg.text)}</p>` : ""}
+        <span class="spacer"></span>
+        ${d.status==="pub" ? "" : `<button class="btn" type="button" data-act="save">Save draft</button>`}
+        <button class="btn primary" type="button" data-act="publish">${d.status==="pub"?"Save changes":"Publish test"}</button>
+      </div>
+    </div>`;
+}
+
+function question(q, i, showBad){
+  const open = openQ===q.id, p = problems(q), first = q.text.trim().split("\n").filter(Boolean).pop() || "";
+  const n = draft.questions.length;
+  return `
+    <div class="q ${open?"open":""} ${showBad && p.length ? "bad":""}" id="q${q.id}">
+      <div class="qhead">
+        <span class="n">${i+1}</span>
+        <button class="sum ${first?"":"blank"}" type="button" data-act="toggle" data-q="${q.id}" aria-expanded="${open}">${first ? esc(first) : "New question"}</button>
+        ${p.length ? `<span class="ok ${showBad?"miss":""}">${esc(p[0])}</span>` : `<span class="ok">${q.opts.length} answers</span>`}
+        <button class="icon" type="button" data-act="up" data-q="${q.id}" ${i===0?"disabled":""} aria-label="Move question ${i+1} up">↑</button>
+        <button class="icon" type="button" data-act="down" data-q="${q.id}" ${i===n-1?"disabled":""} aria-label="Move question ${i+1} down">↓</button>
+        <button class="icon del" type="button" data-act="delq" data-q="${q.id}" aria-label="Remove question ${i+1}">×</button>
+      </div>
+      ${open ? `<div class="qbody">
+        <div class="field"><label for="qt${q.id}">Question</label>
+          <textarea class="slab" id="qt${q.id}" data-q="${q.id}" data-f="text" rows="4" placeholder="Tom: This weather is just horrible today.&#10;Jenny: You can say that again!&#10;&#10;Co Jenny ma na myśli?">${esc(q.text)}</textarea>
+          <span class="hint">Start a line with a name and a colon, like “Tom:”, and the name shows in bold.</span></div>
+        <div class="field"><span class="lab">Answers</span>
+          <div class="ans">
+            ${q.opts.map((o,k)=>`<div class="arow ${q.key===k?"right":""}">
+              <input type="radio" name="key${q.id}" data-q="${q.id}" data-k="${k}" ${q.key===k?"checked":""} aria-label="Answer ${L[k]} is correct">
+              <span class="let">${L[k]})</span>
+              <input class="slab" id="qo${q.id}-${k}" type="text" data-q="${q.id}" data-o="${k}" value="${esc(o)}" aria-label="Answer ${L[k]}">
+              <button class="icon del" type="button" data-act="delo" data-q="${q.id}" data-k="${k}" ${q.opts.length<=2?"disabled":""} aria-label="Remove answer ${L[k]}">×</button></div>`).join("")}
+          </div>
+          <div class="rowline"><button class="btn sm ghost" type="button" data-act="addo" data-q="${q.id}" ${q.opts.length>=6?"disabled":""}>Add answer</button></div></div>
+      </div>` : ""}
+    </div>`;
+}
+
+function importer(){
+  const rows = imp.rows, good = rows ? rows.filter(r=>!r.problem) : [], badn = rows ? rows.length-good.length : 0;
+  return `<div class="imp" id="imp">
+    <h3>Import questions</h3>
+    <div class="field"><span class="lab">1. Use this layout</span>
+      <span class="hint">One question per row. Up to six answers (answer_a to answer_f). In “correct”, put the letter of the right answer. For a dialogue, put each line on a new line inside the question cell (Alt+Enter in Excel).</span>
+      <div class="tblwrap"><table>
+        <thead><tr>${TEMPLATE[0].map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+        <tbody>${TEMPLATE.slice(1).map(r=>`<tr>${r.map((c,i)=>`<td class="${i===0?"qc":""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+      <div class="rowline"><button class="btn sm" type="button" data-act="imp-tpl">${imp.copied?"Template copied":"Copy template"}</button>
+        <span class="hint">Then paste it into an empty Excel sheet.</span></div></div>
+    <div class="field"><label for="imp-text">2. Paste your rows here</label>
+      <textarea id="imp-text" placeholder="Select the rows in Excel, copy, and paste them here.">${esc(imp.text)}</textarea>
+      <div class="rowline"><label class="btn sm" for="imp-file" style="display:inline-flex;align-items:center">Choose a CSV file</label>
+        <input class="sr" id="imp-file" type="file" accept=".csv,.txt,text/csv">
+        <span class="hint">Commas, semicolons and tabs all work.</span></div></div>
+    ${rows ? `<div class="field"><span class="lab">3. Check the result</span>
+      ${rows.length ? `<span class="hint">${good.length} question${good.length===1?"":"s"} ready${badn ? `, ${badn} row${badn===1?"":"s"} with a problem. Rows with a problem are left out.` : "."}</span>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Row</th><th>Question</th><th>Answers</th><th>Correct</th><th>Check</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="${r.problem?"badrow":""}"><td>${r.row}</td><td class="qc">${esc(r.text)}</td>
+          <td>${r.opts.map((o,k)=>L[k]+") "+esc(o)).join("\n")}</td><td>${r.key===null?"":L[r.key]}</td>
+          <td>${r.problem ? `<span class="prob">${esc(r.problem)}</span>` : `<span class="fine">✓</span>`}</td></tr>`).join("")}</tbody>
+      </table></div>` : `<p class="note err">No rows found. Paste at least one row with a question, two answers and the correct letter.</p>`}</div>` : ""}
+    <div class="rowline">
+      ${rows && good.length ? `<button class="btn primary" type="button" data-act="imp-add">Add ${good.length} question${good.length===1?"":"s"}</button>`
+                           : `<button class="btn primary" type="button" data-act="imp-check">Check rows</button>`}
+      ${rows && good.length ? `<button class="btn" type="button" data-act="imp-check">Check again</button>` : ""}
+      <button class="btn ghost" type="button" data-act="imp-close">Cancel</button>
+    </div>
+  </div>`;
+}
+// Reads comma-, semicolon- or tab-separated text, with quoted cells that may hold line breaks.
+function parseTable(text){
+  text = text.replace(/^\uFEFF/,"").replace(/\r\n?/g,"\n");
+  const head = text.split("\n")[0] || "";
+  const count = ch => head.split(ch).length-1;
+  const d = count("\t") ? "\t" : (count(";") > count(",") ? ";" : ",");
+  const out = []; let row = [], cell = "", q = false;
+  for(let i=0;i<text.length;i++){ const ch = text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q=false; } else cell+=ch; }
+    else if(ch==='"' && cell==="") q=true;
+    else if(ch===d){ row.push(cell); cell=""; }
+    else if(ch==="\n"){ row.push(cell); out.push(row); row=[]; cell=""; }
+    else cell+=ch; }
+  if(cell!=="" || row.length){ row.push(cell); out.push(row); }
+  return out.filter(r=>r.some(c=>c.trim()!==""));
+}
+function readRows(text){
+  let rows = parseTable(text);
+  let offset = 1;
+  if(rows.length && rows[0][0].trim().toLowerCase()==="question"){ rows = rows.slice(1); offset = 2; }
+  return rows.map((r,i)=>{ const cells = r.map(c=>c.trim());
+    const qtext = cells[0] || "", c = (cells[cells.length-1] || "").toLowerCase();
+    const opts = cells.slice(1, cells.length-1).filter(o=>o!=="").slice(0,6);
+    let key = null;
+    if(/^[a-f]$/.test(c)) key = L.indexOf(c); else if(/^[1-6]$/.test(c)) key = +c-1;
+    else { const m = opts.findIndex(o=>o.toLowerCase()===c); if(c && m>=0) key = m; }
+    let problem = "";
+    if(!qtext) problem = "No question text";
+    else if(opts.length<2) problem = "Needs at least two answers";
+    else if(key===null) problem = "Correct answer missing";
+    else if(key>=opts.length) problem = "Correct letter has no answer";
+    return {row:i+offset, text:qtext, opts, key: key!==null && key<opts.length ? key : null, problem}; });
+}
+
+const findQ = id => draft.questions.find(q=>q.id===+id);
+function startEdit(t){ imp = null; draft = JSON.parse(JSON.stringify(t)); openQ = draft.questions.length ? null : null; msg = null; view = "build"; render(); window.scrollTo({top:0}); }
+function commit(status){
+  draft.title = draft.title.trim();
+  if(!draft.title){ msg = {type:"err", text:"Give the test a title."}; return render(); }
+  if(status==="pub"){
+    if(!draft.questions.length){ msg = {type:"err", text:"Add at least one question before publishing."}; return render(); }
+    const badAt = draft.questions.map((q,i)=>problems(q).length?i+1:0).filter(Boolean);
+    if(badAt.length){ msg = {type:"err", text:`${badAt.length===1?"Question":"Questions"} ${badAt.slice(0,8).join(", ")}${badAt.length>8?"…":""} ${badAt.length===1?"is":"are"} not finished.`};
+      openQ = draft.questions[badAt[0]-1].id; return render(); }
+  }
+  draft.status = status;
+  const i = tests.findIndex(t=>t.id===draft.id);
+  const copy = JSON.parse(JSON.stringify(draft));
+  if(i<0) tests.unshift(copy); else tests[i] = copy;
+  msg = {type:"ok", text: status==="pub" ? "Published. Students can take this test now." : "Draft saved."};
+  render();
+}
+
+app.addEventListener("input", e=>{
+  const t = e.target;
+  if(t.id==="rsearch"){ res.search = t.value; const pos = t.selectionStart; render(); const s = document.getElementById("rsearch"); s.focus(); s.setSelectionRange(pos,pos); return; }
+  if(t.id==="search"){ search = t.value; const pos = t.selectionStart; render(); const s = document.getElementById("search"); s.focus(); s.setSelectionRange(pos,pos); return; }
+  if(!draft) return;
+  if(t.id==="imp-text"){ if(imp){ imp.text = t.value; } return; }
+  if(t.dataset.o!==undefined){ findQ(t.dataset.q).opts[+t.dataset.o] = t.value; return; }
+  if(t.dataset.q && t.dataset.f==="text"){ findQ(t.dataset.q).text = t.value; return; }
+  if(t.dataset.f){ draft[t.dataset.f] = t.value; }
+});
+app.addEventListener("change", e=>{
+  const t = e.target;
+  if(t.id==="rbest"){ res.best = t.checked; return render(); }
+  if(!draft) return;
+  if(t.name==="fb"){ draft.feedback = t.value; return render(); }
+  if(t.id==="f-bulls"){ draft.bulls = t.checked; return render(); }
+  if(t.id==="f-cert"){ draft.cert = t.checked; return render(); }
+  if(t.id==="f-mail"){ draft.mail = t.checked; return render(); }
+  if(t.id==="f-img" && t.files && t.files[0]){ const fr = new FileReader();
+    fr.onload = () => { if(draft){ draft.image = String(fr.result); render(); } }; fr.readAsDataURL(t.files[0]); return; }
+  if(t.name==="acc"){ draft.access = t.value; return render(); }
+  if(t.id==="f-class"){ draft.classId = t.value; if(!t.value) draft.lesson=""; return render(); }
+  if(t.id==="f-lesson"){ draft.lesson = t.value; return; }
+  if(t.id==="f-pass"){ return render(); }
+  if(t.id==="imp-file" && t.files && t.files[0]){ const fr = new FileReader();
+    fr.onload = () => { if(!imp) return; imp.text = String(fr.result); imp.rows = readRows(imp.text); render(); };
+    fr.readAsText(t.files[0]); return; }
+  if(t.dataset.k!==undefined && t.type==="radio"){ findQ(t.dataset.q).key = +t.dataset.k; return render(); }
+});
+app.addEventListener("keydown", e=>{
+  if(e.key==="Escape" && e.target.id==="search" && search){ search=""; render(); document.getElementById("search").focus(); }
+});
+app.addEventListener("click", e=>{
+  const b = e.target.closest("button");
+  if(!b){ const row = e.target.closest("tr.att"); if(row && res){ res.open = res.open===row.dataset.att ? null : row.dataset.att; res.del=null; render(); } return; }
+  if(!b.dataset.act) return;
+  const a = b.dataset.act, id = b.dataset.id, q = b.dataset.q ? findQ(b.dataset.q) : null;
+  const qi = q ? draft.questions.indexOf(q) : -1;
+  switch(a){
+    case "clear": search=""; return render();
+    case "new": return startEdit({id:"t"+Date.now(), title:"", intro:"", status:"draft", attempts:0, feedback:"end", bulls:true, pass:"", classId:"", lesson:"", access:"login", cert:false, mail:false, image:"", questions:[]});
+    case "results": res = {id, search:"", best:false, open:null, all:false, del:null}; view="res"; render(); return window.scrollTo({top:0});
+    case "att": res.open = res.open===b.dataset.att ? null : b.dataset.att; res.del=null; return render();
+    case "att-all": res.all = !res.all; return render();
+    case "att-del": res.del = b.dataset.att; return render();
+    case "att-del-no": res.del = null; return render();
+    case "att-del-yes": { const t = tests.find(x=>x.id===res.id); attemptCache[t.id] = attemptsFor(t).filter(a=>a.id!==b.dataset.att); t.attempts = attemptCache[t.id].length; res.open=null; res.del=null; return render(); }
+    case "edit": return startEdit(tests.find(t=>t.id===id));
+    case "del": confirmDel=id; return render();
+    case "del-no": confirmDel=null; return render();
+    case "del-yes": tests = tests.filter(t=>t.id!==id); confirmDel=null; return render();
+    case "copy": { const url = "https://thebluetree.pl/test/" + fold(tests.find(t=>t.id===id).title).replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") + "/";
+      copied=id; render(); if(navigator.clipboard) navigator.clipboard.writeText(url).catch(()=>{}); setTimeout(()=>{ copied=null; if(view==="lib") render(); },1600); return; }
+    case "back": view="lib"; draft=null; msg=null; imp=null; res=null; render(); return window.scrollTo({top:0});
+    case "toggle": openQ = openQ===q.id ? null : q.id; return render();
+    case "addq": { const n = mkq("", ["","",""], null); draft.questions.push(n); openQ=n.id; msg=null; render(); const f=document.getElementById("qt"+n.id); if(f) f.focus(); return; }
+    case "delq": draft.questions.splice(qi,1); return render();
+    case "up": draft.questions.splice(qi-1,0,draft.questions.splice(qi,1)[0]); return render();
+    case "down": draft.questions.splice(qi+1,0,draft.questions.splice(qi,1)[0]); return render();
+    case "addo": { q.opts.push(""); render(); const f=document.getElementById(`qo${q.id}-${q.opts.length-1}`); if(f) f.focus(); return; }
+    case "delo": { const k=+b.dataset.k; q.opts.splice(k,1); q.key = q.key===k ? null : (q.key>k ? q.key-1 : q.key); return render(); }
+    case "imp-open": imp = {text:"", rows:null, copied:false}; render(); { const el=document.getElementById("imp"); if(el) el.scrollIntoView({block:"nearest"}); } return;
+    case "imp-close": imp = null; return render();
+    case "imp-check": imp.rows = readRows(imp.text); return render();
+    case "imp-tpl": { const tsv = TEMPLATE.map(r=>r.map(c=>/[\n\t"]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c).join("\t")).join("\n");
+      imp.copied = true; render(); if(navigator.clipboard) navigator.clipboard.writeText(tsv).catch(()=>{}); return; }
+    case "imp-add": { const add = imp.rows.filter(r=>!r.problem).map(r=>mkq(r.text, r.opts, r.key));
+      draft.questions.push(...add); imp = null; msg = {type:"ok", text:`${add.length} question${add.length===1?"":"s"} added. Save to keep them.`}; return render(); }
+    case "img-del": draft.image = ""; return render();
+    case "save": return commit(draft.status==="pub" ? "pub" : "draft");
+    case "publish": return commit("pub");
+  }
+});
+document.getElementById("reset").addEventListener("click", ()=>{ for(const k in attemptCache) delete attemptCache[k]; res=null; tests=seed(); view="lib"; search=""; draft=null; msg=null; confirmDel=null; imp=null; render(); });
+render();
+</script>

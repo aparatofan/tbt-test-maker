@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>TBT Certificate Preview</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
+<style>
+/* Layout: two stage cards on the tool canvas. The certificate is the picture; the controls feed it. Light only, like every TBT page. */
+:root{
+  --tbt-blue:#0856C9; --tbt-blue-dark:#063F94;
+  --tbt-canvas:#F6F8FC; --tbt-surface:#FFFFFF; --tbt-input:#F0F5FE; --tbt-selected-bg:#EDF4FF;
+  --tbt-border:#D8E3F0; --tbt-ink:#1F2937; --tbt-muted:#667085; --tbt-faint:#8299B8;
+  --tbt-success:#16803C; --tbt-success-bg:#ECFDF3;
+  --tbt-white:#FFFFFF; --old-blue:#0000FF; --old-ink:#000000;
+  --tbt-shadow:0 6px 20px rgba(24,56,96,.07);
+  --tbt-focus-ring:0 0 0 3px rgba(8,86,201,.18);
+  --ui:"Roboto",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --content:"Roboto Slab",Georgia,serif;
+  --old:"DejaVu Sans","Verdana",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--tbt-canvas);color:var(--tbt-ink);font:400 16px/1.5 var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h2,p{margin:0}
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);
+  border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface);margin-bottom:-16px}
+.proto b{color:var(--tbt-ink);font-weight:600}
+.stage{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:22px;box-shadow:var(--tbt-shadow);padding:40px;display:flex;flex-direction:column;gap:24px}
+.stage > h2{font:700 22px/1.3 var(--content)}
+.sub{color:var(--tbt-muted);margin-top:-16px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px 24px;align-items:end}
+.field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.field.wide{grid-column:span 2}
+.field label,.field .lab{font-weight:600;font-size:14px}
+input[type=text],input[type=number]{height:44px;border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:0 16px;font:400 16px var(--ui);color:var(--tbt-ink);width:100%}
+input:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.pair{display:flex;align-items:center;gap:8px}
+.pair input{width:84px}
+.seg{display:inline-flex;border:1px solid var(--tbt-border);border-radius:12px;overflow:hidden;align-self:flex-start}
+.seg label{padding:10px 16px;cursor:pointer;font-weight:500;color:var(--tbt-muted);font-size:15px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--tbt-selected-bg);color:var(--tbt-blue-dark);font-weight:600}
+.seg label:has(input:focus-visible){box-shadow:inset var(--tbt-focus-ring)}
+
+/* certificate: every position and size is a share of the picture's width, so it scales as one piece */
+.cert{position:relative;width:100%;aspect-ratio:1979/1403;background:var(--tbt-surface) url("https://thebluetree.pl/wp-content/uploads/2026/03/tbt_certificate_background_tree_left_signature.jpg") center/100% 100% no-repeat;
+  border-radius:8px;overflow:hidden;container-type:inline-size;box-shadow:var(--tbt-shadow)}
+.cert .ln{position:absolute;left:22%;width:56%;display:flex;justify-content:center;text-align:center;transform:translateY(-50%);white-space:nowrap;line-height:1.15}
+.cert .cap{font:500 1.35cqw var(--ui);letter-spacing:.14em;text-transform:uppercase;color:var(--tbt-ink)}
+.cert .name{font:700 3.1cqw var(--content);color:var(--tbt-blue)}
+.cert .title{font:700 2.3cqw var(--content);color:var(--tbt-blue)}
+.cert .score{font:700 1.8cqw var(--content);color:var(--tbt-blue);letter-spacing:.06em;text-transform:uppercase}
+.cert .date{font:400 1.2cqw var(--ui);color:var(--tbt-muted)}
+.cert .fit{flex:none;transform-origin:center}
+.cert.old .cap{font:400 1.4cqw var(--old);letter-spacing:0;color:var(--old-ink)}
+.cert.old .name{font:700 2.9cqw var(--old);color:var(--old-blue)}
+.cert.old .title{font:700 2.15cqw var(--old);color:var(--old-blue)}
+.cert.old .score{font:700 1.65cqw var(--old);color:var(--old-blue);letter-spacing:0}
+.cert.old .date{display:none}
+.hint{font-size:14px;color:var(--tbt-muted)}
+
+/* email */
+.mail{border:1px solid var(--tbt-border);border-radius:16px;overflow:hidden;max-width:640px}
+.mail .hd{padding:16px 24px;border-bottom:1px solid var(--tbt-border);background:var(--tbt-canvas);display:grid;grid-template-columns:64px 1fr;gap:4px 12px;font-size:14px}
+.mail .hd span:nth-child(odd){color:var(--tbt-muted)}
+.mail .hd .subj{font-weight:600;font-size:15px}
+.mail .bd{padding:24px;display:flex;flex-direction:column;gap:16px;font-size:15px}
+.mail .big{font:700 28px/1.2 var(--content);color:var(--tbt-blue)}
+.mail .pill{display:inline-block;border-radius:999px;padding:2px 10px;font:600 13px var(--ui);background:var(--tbt-success-bg);color:var(--tbt-success);margin-left:8px;vertical-align:middle}
+.mail .cta{align-self:flex-start;display:inline-block;background:var(--tbt-blue);color:var(--tbt-white);font-weight:600;border-radius:12px;padding:10px 20px}
+.mail .att{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--tbt-border);border-radius:12px;padding:8px 14px;font-size:14px;align-self:flex-start}
+.mail .att i{font-style:normal;font-weight:700;font-size:11px;color:var(--tbt-white);background:var(--tbt-blue);border-radius:4px;padding:2px 5px}
+.mail .ft{color:var(--tbt-faint);font-size:13px}
+
+@media (max-width:640px){ .stage{padding:24px} .field.wide{grid-column:auto} }
+</style>
+
+<div class="wrap">
+  <div class="proto"><span><b>Prototype</b> · the certificate and the result email. The background loads from thebluetree.pl.</span></div>
+
+  <section class="stage">
+    <h2>Certificate</h2>
+    <p class="sub">Type a long name or title to see how it fits.</p>
+    <div class="controls">
+      <div class="field"><label for="c-name">Student’s name</label><input id="c-name" type="text" value="Ola Kowalska"></div>
+      <div class="field wide"><label for="c-title">Test title</label><input id="c-title" type="text" value="Expressing Opinions in English"></div>
+      <div class="field"><span class="lab">Score</span>
+        <div class="pair"><label class="sr" for="c-score" hidden>Correct answers</label><input id="c-score" type="number" min="0" value="9"><span>out of</span>
+          <label for="c-total" hidden>Questions</label><input id="c-total" type="number" min="1" value="10"></div></div>
+      <div class="field"><span class="lab">Lettering</span>
+        <div class="seg" role="radiogroup" aria-label="Lettering">
+          <label><input type="radio" name="look" value="new" checked>TBT fonts</label>
+          <label><input type="radio" name="look" value="old">As it is now</label>
+        </div></div>
+    </div>
+    <div class="cert" id="cert" role="img" aria-label="Certificate preview">
+      <div class="ln cap" style="top:21.8%">This is to certify that</div>
+      <div class="ln name" style="top:29.3%"><span class="fit" id="o-name"></span></div>
+      <div class="ln cap" style="top:36.4%">has successfully completed</div>
+      <div class="ln title" style="top:43.1%"><span class="fit" id="o-title"></span></div>
+      <div class="ln cap" style="top:49%">achieving the score of</div>
+      <div class="ln score" style="top:54.7%"><span id="o-score"></span></div>
+      <div class="ln date" style="top:60.2%"><span id="o-date"></span></div>
+    </div>
+    <p class="hint">The student downloads this as a PDF from the result page. The same file goes into the email below.</p>
+  </section>
+
+  <section class="stage">
+    <h2>Result email</h2>
+    <p class="sub">Sent when “Email the result” is on for the test.</p>
+    <div class="mail">
+      <div class="hd"><span>From</span><span>The Blue Tree</span><span>To</span><span id="m-to"></span><span>Subject</span><span class="subj" id="m-subj"></span></div>
+      <div class="bd">
+        <p id="m-hi"></p>
+        <p>You finished <strong id="m-title"></strong>. Here is your result.</p>
+        <p><span class="big" id="m-score"></span><span class="pill">Passed</span></p>
+        <p>Your certificate is attached. To see which answers were right and which were wrong, open your result page.</p>
+        <span class="cta">See my answers</span>
+        <span class="att"><i>PDF</i><span id="m-file"></span></span>
+        <p class="ft">The Blue Tree · The Place Where People Grow</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fold = t => t.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ł/g,"l").replace(/Ł/g,"L");
+// Long names and titles shrink to fit the line instead of running into the border.
+function fit(el){ el.style.transform = "none"; const box = el.parentElement.clientWidth, w = el.scrollWidth;
+  if(w > box && w > 0) el.style.transform = `scale(${Math.max(0.5, box/w)})`; }
+function update(){
+  const name = $("c-name").value.trim() || "Student’s name", title = $("c-title").value.trim() || "Test title";
+  const total = Math.max(1, +$("c-total").value || 1), score = Math.min(total, Math.max(0, +$("c-score").value || 0));
+  const pct = Math.round(score/total*100), first = name.split(" ")[0];
+  $("o-name").textContent = name; $("o-title").textContent = title;
+  $("o-score").textContent = `${score} out of ${total}`;
+  $("o-date").textContent = "11 November 2026";
+  $("m-to").textContent = fold(name).toLowerCase().replace(/[^a-z]+/g,".").replace(/^\.|\.$/g,"") + "@example.com";
+  $("m-subj").textContent = `Your result: ${title}`;
+  $("m-hi").textContent = `Hi ${first},`;
+  $("m-title").textContent = title;
+  $("m-score").textContent = `${score} / ${total} · ${pct}%`;
+  $("m-file").textContent = "certificate-" + fold(title).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40) + ".pdf";
+  fit($("o-name")); fit($("o-title"));
+}
+document.addEventListener("input", update);
+document.querySelectorAll('input[name="look"]').forEach(r=>r.addEventListener("change", ()=>{ $("cert").classList.toggle("old", r.value==="old" && r.checked); update(); }));
+window.addEventListener("resize", update);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(update);
+update();
+</script>

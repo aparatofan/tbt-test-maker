@@ -1,0 +1,20 @@
+# Never commit secrets or local config
+.env
+.env.*
+*.local
+wp-config.php
+config.php
+secrets.php
+
+# Dependencies / build noise (this plugin uses none, but guard anyway)
+node_modules/
+/vendor/
+*.log
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>TBT Quiz Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Slab:wght@400;600;700&family=Roboto+Mono:wght@700&display=swap">
+<style>
+/* Layout: Tool Hero, then one white stage card on the pale canvas holding the whole sitting. Light only, like every TBT page. */
+:root{
+  --tbt-blue:#0856C9; --tbt-blue-dark:#063F94;
+  --tbt-canvas:#F6F8FC; --tbt-surface:#FFFFFF; --tbt-input:#F0F5FE; --tbt-selected-bg:#EDF4FF;
+  --tbt-border:#D8E3F0; --tbt-blue-wash:#E3EEFD; --tbt-faint:#8299B8; --tbt-periwinkle:#7BA7E8; --tbt-ink:#1F2937; --tbt-muted:#667085;
+  --tbt-success:#16803C; --tbt-success-bg:#ECFDF3; --tbt-error:#C62828; --tbt-error-bg:#FFF1F1;
+  --tbt-white:#FFFFFF; --tbt-hero-soft:rgba(255,255,255,.82);
+  --tbt-shadow:0 6px 20px rgba(24,56,96,.07);
+  --tbt-focus-ring:0 0 0 3px rgba(8,86,201,.18);
+  --ui:"Roboto",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --content:"Roboto Slab",Georgia,serif;
+  --identity:"Roboto Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--tbt-canvas);color:var(--tbt-ink);font:400 16px/1.5 var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:none;box-shadow:var(--tbt-focus-ring)}
+
+/* prototype strip */
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);
+  border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface)}
+.proto b{color:var(--tbt-ink);font-weight:600}
+.proto label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.proto .spacer{flex:1}
+.linkbtn{background:none;border:0;padding:4px;color:var(--tbt-blue);font-weight:600;font-size:14px;border-radius:6px}
+.linkbtn:hover{text-decoration:underline}
+
+/* tool hero */
+.hero{background:linear-gradient(135deg,var(--tbt-blue),var(--tbt-blue-dark));color:var(--tbt-white);border-radius:22px;padding:32px 40px}
+.hero .eyebrow{font:700 12px/1.2 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--tbt-hero-soft);margin:0 0 6px}
+.hero h1{font:700 34px/1.15 var(--identity);letter-spacing:.02em;text-transform:uppercase;margin:0;text-wrap:balance}
+.hero .support{margin:8px 0 0;color:var(--tbt-hero-soft)}
+
+/* stage card */
+.stage{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:22px;box-shadow:var(--tbt-shadow);padding:40px;display:flex;flex-direction:column;gap:32px}
+h2{font:700 22px/1.3 var(--content);margin:0}
+.muted{color:var(--tbt-muted)}
+.facts{display:flex;flex-wrap:wrap;gap:8px 32px;margin:0;padding:0;list-style:none;color:var(--tbt-muted)}
+.facts strong{color:var(--tbt-ink);font-weight:600}
+.field{display:flex;flex-direction:column;gap:8px;max-width:360px}
+.field label{font-weight:600}
+.field input{height:44px;border:1px solid var(--tbt-border);border-radius:12px;background:var(--tbt-input);padding:0 16px;font:400 16px var(--ui);color:var(--tbt-ink)}
+.field input:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.field .hint{font-size:14px;color:var(--tbt-muted)}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:16px}
+.row .spacer{flex:1}
+
+/* buttons */
+.btn{height:44px;padding:0 24px;border-radius:12px;font-weight:600;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-blue-dark);transition:transform .15s,background .15s}
+.btn:hover{background:var(--tbt-selected-bg)}
+.btn.primary{background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white)}
+.btn.primary:hover{background:var(--tbt-blue-dark);transform:translateY(-1px)}
+.btn.cta{height:53px;min-width:250px;border-radius:999px;background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white);text-transform:uppercase;letter-spacing:.08em}
+.btn.cta:hover{background:var(--tbt-blue-dark)}
+.btn:disabled{opacity:.5;cursor:default;transform:none}
+
+/* question */
+.strip{display:block;width:100%;border-radius:12px}
+.ph{border:1px dashed var(--tbt-border);border-radius:12px;padding:32px 16px;text-align:center;color:var(--tbt-muted);font-size:14px}
+.prog{display:flex;flex-direction:column;gap:8px}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:13px;color:var(--tbt-faint)}
+.meta strong{color:var(--tbt-ink);font-weight:600}
+.meta .spacer{flex:1}
+.saved{display:inline-flex;align-items:center;gap:6px;color:var(--tbt-faint);font-weight:400}
+.saved.off{color:var(--tbt-error);font-weight:600}
+.qnum{font:700 28px/1 var(--content);border-left:6px solid var(--tbt-blue);padding:4px 0 4px 16px;margin:0}
+.qbody{font:400 20px/1.6 var(--content);display:flex;flex-direction:column;gap:4px}
+.qbody p{margin:0}
+.qbody .ask{margin-top:16px}
+.opts{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0}
+.opt{display:flex;align-items:center;gap:16px;padding:12px 16px;border:1px solid var(--tbt-border);border-radius:12px;cursor:pointer;font:400 18px/1.4 var(--content);background:var(--tbt-surface)}
+.opt:hover{background:var(--tbt-selected-bg)}
+.opt input{appearance:none;width:20px;height:20px;flex:none;border:2px solid var(--tbt-muted);border-radius:50%;margin:0;display:grid;place-content:center}
+.opt input:checked{border-color:var(--tbt-blue)}
+.opt input:checked::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--tbt-blue)}
+.opt:has(input:checked){border-color:var(--tbt-blue);background:var(--tbt-selected-bg)}
+.opt:has(input:focus-visible){box-shadow:var(--tbt-focus-ring)}
+.opts.locked .opt{cursor:default}
+.opts.locked .opt:hover{background:var(--tbt-surface)}
+.opts.locked .opt.right,.opts.locked .opt.right:hover{border-color:var(--tbt-success);background:var(--tbt-success-bg)}
+.opts.locked .opt.wrong,.opts.locked .opt.wrong:hover{border-color:var(--tbt-error);background:var(--tbt-error-bg)}
+.opt .tag{margin-left:auto;font:600 14px var(--ui)}
+.opt.right .tag{color:var(--tbt-success)}
+.opt.wrong .tag{color:var(--tbt-error)}
+.tiles{display:flex;align-items:center;gap:8px}
+.dots{flex:1;min-width:0;display:grid;gap:8px}
+.pg{flex:none;width:32px;height:40px;border:0;background:none;color:var(--tbt-blue);font-size:22px;line-height:1;border-radius:10px;padding:0}
+.pg:hover{background:var(--tbt-selected-bg)}
+.pg:disabled{opacity:.3;cursor:default;background:none}
+.dot.gap{visibility:hidden}
+.dot{height:40px;min-width:0;border-radius:10px;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-muted);font-weight:600;font-size:14px;padding:0;
+  font-variant-numeric:tabular-nums;transition:background .2s,color .2s,border-color .2s,transform .2s}
+.dot:hover{border-color:var(--tbt-blue);color:var(--tbt-blue);transform:translateY(-2px)}
+.dot.done{background:var(--tbt-blue-wash);color:var(--tbt-blue-dark);border-color:var(--tbt-periwinkle)}
+.dot.done:hover{color:var(--tbt-blue-dark);border-color:var(--tbt-blue)}
+.dot.good{background:var(--tbt-success-bg);color:var(--tbt-success);border-color:var(--tbt-success)}
+.dot.bad{background:var(--tbt-error-bg);color:var(--tbt-error);border-color:var(--tbt-error)}
+.dot.good:hover{color:var(--tbt-success)}
+.dot.bad:hover{color:var(--tbt-error)}
+.dot.here{box-shadow:0 0 0 2px var(--tbt-surface),0 0 0 4px var(--tbt-blue)}
+.dot.pop{animation:tilepop .45s cubic-bezier(.22,.61,.36,1)}
+@keyframes tilepop{0%{transform:scale(.8)}55%{transform:scale(1.12) translateY(-3px)}100%{transform:scale(1)}}
+.pill{display:inline-block;border-radius:999px;padding:4px 12px;font:600 14px var(--ui)}
+.pill.pass{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.pill.fail{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.proto select{font:inherit;color:var(--tbt-ink);border:1px solid var(--tbt-border);border-radius:8px;padding:4px 8px;background:var(--tbt-surface)}
+
+/* notices */
+.notice{border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.notice.warn{background:var(--tbt-selected-bg);border:1px solid var(--tbt-border)}
+.notice.err{background:var(--tbt-error-bg);border:1px solid var(--tbt-error);color:var(--tbt-error)}
+.notice p{margin:0;flex:1;min-width:220px}
+.notice.ok{background:var(--tbt-success-bg);border:1px solid var(--tbt-success);color:var(--tbt-success)}
+.notice.err .btn{color:var(--tbt-error);border-color:var(--tbt-error)}
+
+/* result */
+.score{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px}
+.score .big{font:700 64px/1 var(--content);color:var(--tbt-blue);font-variant-numeric:tabular-nums}
+.score .pct{font:600 22px var(--content);color:var(--tbt-muted)}
+.review{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.review li{display:grid;grid-template-columns:32px 1fr;gap:4px 12px;padding:16px 0;border-top:1px solid var(--tbt-border)}
+.review .mark{width:28px;height:28px;border-radius:50%;display:grid;place-content:center;font-weight:700;font-size:15px}
+.review .ok .mark{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.review .bad .mark{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.review .q{font:600 17px/1.4 var(--content);min-width:0}
+.review .a{grid-column:2;font-size:15px;color:var(--tbt-muted);min-width:0}
+.review .a b{font-weight:600}
+.review .ok .a b{color:var(--tbt-success)}
+.review .bad .a b.yours{color:var(--tbt-error)}
+.review .bad .a b.right{color:var(--tbt-success)}
+
+@media (max-width:640px){
+  .hero{padding:24px}.hero h1{font-size:24px}
+  .stage{padding:24px;gap:24px}
+  .qbody{font-size:18px}.opt{font-size:16px}
+  .btn.cta{min-width:0;width:100%}
+  .tiles{gap:4px}.dots{gap:4px}.pg{width:24px}.dot{font-size:13px;border-radius:8px}
+}
+@media (prefers-reduced-motion:reduce){.btn,.dot{transition:none}.dot.pop{animation:none}.dot:hover{transform:none}}
+</style>
+
+<div class="wrap">
+  <div class="proto">
+    <span><b>Prototype</b> · what the student sees</span>
+    <span class="spacer"></span>
+    <label for="len">Questions <select id="len"><option>10</option><option>20</option><option>100</option></select></label>
+    <label for="pass">Pass mark <select id="pass"><option value="0">Not set</option><option value="60">60%</option></select></label>
+    <label for="mode">Feedback <select id="mode"><option value="end">At the end</option><option value="now">After each question</option></select></label>
+    <label for="bulls"><input type="checkbox" id="bulls" checked> Bulls</label>
+    <label for="offline"><input type="checkbox" id="offline"> Simulate lost connection</label>
+    <button class="linkbtn" id="reset" type="button">Start over</button>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">The Blue Tree · Test</p>
+    <h1>Expressing Opinions</h1>
+    <p class="support">Check how well you understand the phrases people use to agree, disagree and give an opinion.</p>
+  </header>
+
+  <main class="stage" id="stage"></main>
+</div>
+
+<script>
+const BASE = [
+  {lines:[["Tom","This weather is just horrible today."],["Jenny","You can say that again!"]],
+   ask:'Co Jenny ma na myśli, mówiąc: <em>“You can say that again!”</em>',
+   opts:["Masz całkowitą rację.","Nie jestem pewien.","Powtórz to głośniej."],key:0},
+  {lines:[["Alita","Working from home is the future."],["Pete","I couldn’t agree more."]],
+   ask:'Co Pete ma na myśli?',
+   opts:["Nie mogę się z tym zgodzić.","Zgadzam się w stu procentach.","Zgadzam się tylko częściowo."],key:1},
+  {lines:[["","_____, the film was far too long."]],
+   ask:'Który zwrot poprawnie wprowadza opinię?',
+   opts:["According to me","In my meaning","As far as I’m concerned"],key:2},
+  {lines:[["Sven","We should cancel the meeting."],["Kat","I’m not so sure about that."]],
+   ask:'Co robi Kat?',
+   opts:["Grzecznie wyraża wątpliwość.","Zgadza się ze Svenem.","Prosi o powtórzenie."],key:0},
+  {lines:[["Kat","I see your point, but…"]],
+   ask:'Co zwykle następuje po tym zwrocie?',
+   opts:["Pełna zgoda.","Inne zdanie.","Zmiana tematu."],key:1},
+  {lines:[],
+   ask:'Które zdanie jest poprawne?',
+   opts:["I am agree with you.","I agree to you.","I agree with you."],key:2},
+  {lines:[["Pete","Pineapple on pizza is a crime."],["Alita","Oh, come on!"]],
+   ask:'Co wyraża Alita?',
+   opts:["Pełną zgodę.","Niedowierzanie i sprzeciw.","Prośbę o wyjaśnienie."],key:1},
+  {lines:[["","If you ask me, the old logo was better."]],
+   ask:'Co znaczy <em>“If you ask me”</em>?',
+   opts:["Moim zdaniem","Jeśli zapytasz mnie później","Zapytaj mnie"],key:0},
+  {lines:[["Alita","Cheaper tickets would bring more people."],["Sven","That’s a good point."]],
+   ask:'Co robi Sven?',
+   opts:["Zmienia temat.","Odrzuca argument.","Przyznaje, że argument jest trafny."],key:2},
+  {lines:[],
+   ask:'Który sprzeciw jest najbardziej uprzejmy?',
+   opts:["You’re wrong.","I’m afraid I see it differently.","That’s nonsense."],key:1}
+];
+const KEY = "tbtq-proto-v3", L = "abc", PHONE = window.matchMedia("(max-width:640px)");
+let QUIZ = BASE, N = BASE.length;
+// The 20- and 100-question tests repeat the same ten questions, to show the layout at length.
+function setLen(n){ N = n; QUIZ = Array.from({length:n}, (_,i)=>BASE[i % BASE.length]); }
+// One row of tiles up to 25 questions; longer tests show 20 at a time (10 on a phone).
+function per(){ return PHONE.matches ? 10 : (N<=25 ? N : 20); }
+function go(i){ s.i = Math.max(0, Math.min(N-1, i)); s.page = Math.floor(s.i/per()); }
+const BULL = {1:"https://thebluetree.pl/wp-content/uploads/2019/07/1_start.jpg", 2:"https://thebluetree.pl/wp-content/uploads/2019/07/2_run.jpg", 3:"https://thebluetree.pl/wp-content/uploads/2019/07/3_attack.jpg", 4:"https://thebluetree.pl/wp-content/uploads/2019/07/4_jump.jpg", pass:"https://thebluetree.pl/wp-content/uploads/2019/07/byczek_pass.jpg", fail:"https://thebluetree.pl/wp-content/uploads/2019/07/byczek_fail.jpg"};
+const stage = document.getElementById("stage");
+const lenEl = document.getElementById("len"), passEl = document.getElementById("pass");
+const offline = document.getElementById("offline"), modeEl = document.getElementById("mode"), bullsEl = document.getElementById("bulls");
+let s = load() || fresh(), justDone = -1;
+modeEl.value = s.mode; bullsEl.checked = s.bulls; lenEl.value = String(N); passEl.value = String(s.pass||0);
+
+function fresh(){ return {view:"landing", name:"", i:0, answers:Array(N).fill(null), locked:Array(N).fill(false), warn:false, failed:false, mode:"end", bulls:true, pass:0, page:0}; }
+function load(){ try{ const v = JSON.parse(localStorage.getItem(KEY)); if(v && v.locked && [10,20,100].includes(v.answers && v.answers.length)){ setLen(v.answers.length); return v; } return null; }catch(e){ return null; } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(s)); }catch(e){} }
+function esc(t){ return String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+const answered = () => s.answers.filter(a=>a!==null).length;
+const score = () => s.answers.filter((a,i)=>a===QUIZ[i].key).length;
+// Bull 1 at the start, 2 in the middle, 3 almost at the end, 4 on the last question.
+function stageAt(i){
+  if(i===0) return 1; if(i===N-1) return 4;
+  if(i===Math.ceil(N/2)-1) return 2;
+  if(i===Math.min(N-2, Math.round(N*0.85)-1)) return 3;
+  return 0;
+}
+
+function render(){
+  save();
+  stage.innerHTML = s.view==="landing" ? landing() : s.view==="quiz" ? question() : result();
+}
+
+function landing(){
+  const n = answered(), resume = n>0;
+  return `
+    <div>
+      <h2>${resume ? "Welcome back" + (s.name ? ", " + esc(s.name) : "") : "Before you start"}</h2>
+      <p class="muted" style="margin:8px 0 0">${resume
+        ? `You answered ${n} of ${N} questions last time. Your answers are still here.`
+        : "Read each question and choose one answer." + (s.mode==="end" ? " You can go back and change an answer at any time." : " You see the correct answer after each question.")}</p>
+    </div>
+    <ul class="facts">
+      <li><strong>${N}</strong> questions</li>
+      <li>About <strong>${Math.round(N*0.8)}</strong> minutes</li>
+      ${s.pass ? `<li><strong>${s.pass}%</strong> to pass</li>` : ""}
+      <li>Answers are <strong>saved as you go</strong></li>
+    </ul>
+    ${resume ? "" : `
+    <div class="field">
+      <label for="name">Your name</label>
+      <input id="name" type="text" autocomplete="name" value="${esc(s.name)}" placeholder="e.g. Milena">
+      <span class="hint">Shown on your result. Logged-in students skip this step.</span>
+    </div>`}
+    <div class="row">
+      <button class="btn cta" type="button" data-act="start">${resume ? "Continue test" : "Start test"}</button>
+      ${resume ? `<button class="btn" type="button" data-act="restart">Start again</button>` : ""}
+    </div>`;
+}
+
+function question(){
+  const q = QUIZ[s.i], last = s.i===N-1, a = s.answers[s.i], now = s.mode==="now", lock = now && s.locked[s.i];
+  const st = s.bulls ? stageAt(s.i) : 0, done = answered(), left = N-done;
+  const pop = justDone; justDone = -1;
+  const n = per(), pages = Math.ceil(N/n), page = Math.min(pages-1, Math.max(0, s.page ?? Math.floor(s.i/n)));
+  const from = page*n, to = Math.min(N, from+n);
+  const missing = s.answers.map((v,i)=>v===null?i+1:0).filter(Boolean);
+  const nextBtn = last ? `<button class="btn cta" type="button" data-act="finish">Finish test</button>`
+                       : `<button class="btn primary" type="button" data-act="next">Next question</button>`;
+  return `
+    <div class="prog">
+      <div class="tiles">
+        ${pages>1 ? `<button type="button" class="pg" data-page="${page-1}" ${page===0?"disabled":""} aria-label="Earlier questions">‹</button>` : ""}
+        <div class="dots" style="grid-template-columns:repeat(${n},minmax(0,1fr))" aria-label="Questions ${from+1} to ${to} of ${N}">
+          ${Array.from({length:n},(_,k)=>{ const i=from+k; if(i>=N) return `<span class="dot gap"></span>`; const v=s.answers[i];
+            const c = now && s.locked[i] ? (v===QUIZ[i].key?"good":"bad") : (v!==null?"done":"");
+            return `<button type="button" class="dot ${c} ${i===s.i?"here":""} ${i===pop?"pop":""}" data-go="${i}" aria-label="Question ${i+1}${v!==null?", done":""}" ${i===s.i?'aria-current="step"':""}>${i+1}</button>`; }).join("")}
+        </div>
+        ${pages>1 ? `<button type="button" class="pg" data-page="${page+1}" ${page===pages-1?"disabled":""} aria-label="Later questions">›</button>` : ""}
+      </div>
+      <div class="meta">
+        <span>Question ${s.i+1} of ${N} · ${left} left</span>
+        <span class="spacer"></span>
+        ${offline.checked ? `<span class="saved off">Offline · saved on this device</span>` : `<span class="saved">✓ Saved</span>`}
+      </div>
+    </div>
+    ${st ? `<img class="strip" src="${BULL[st]}" alt="">` : ""}
+    <p class="qnum">${s.i+1}.</p>
+    <div class="qbody">
+      ${q.lines.map(([who,t])=>`<p>${who?`<strong>${esc(who)}:</strong> `:""}${esc(t)}</p>`).join("")}
+      <p class="${q.lines.length?"ask":""}">${q.ask}</p>
+    </div>
+    <fieldset class="opts ${lock?"locked":""}" aria-label="Answers">
+      ${q.opts.map((o,k)=>{ const cls = lock ? (k===q.key?"right":(k===a?"wrong":"")) : "";
+        const tag = lock ? (k===q.key?`<span class="tag">✓ Correct</span>`:(k===a?`<span class="tag">✗ Your answer</span>`:"")) : "";
+        return `<label class="opt ${cls}" for="o${k}"><input type="radio" name="ans" id="o${k}" value="${k}" ${a===k?"checked":""} ${lock?"disabled":""}>${L[k]}) ${esc(o)}${tag}</label>`; }).join("")}
+    </fieldset>
+    ${lock ? (a===q.key ? `<div class="notice ok" role="status"><p><strong>Correct.</strong></p></div>`
+                        : `<div class="notice err" role="status"><p><strong>Not quite.</strong> The correct answer is ${L[q.key]}.</p></div>`) : ""}
+    ${s.warn && missing.length ? `<div class="notice warn"><p>${missing.length===1?"Question":"Questions"} <strong>${missing.join(", ")}</strong> ${missing.length===1?"has":"have"} no answer yet.</p>
+       <button class="btn" type="button" data-go="${missing[0]-1}">Go to question ${missing[0]}</button>
+       <button class="btn" type="button" data-act="force">Finish anyway</button></div>` : ""}
+    ${s.failed ? `<div class="notice err" role="alert"><p><strong>We couldn’t send your answers.</strong> Nothing is lost. All ${done} answers are saved on this device. Check your connection and try again.</p>
+       <button class="btn" type="button" data-act="force">Try again</button></div>` : ""}
+    <div class="row">
+      <button class="btn" type="button" data-act="back" ${s.i===0?"disabled":""}>Back</button>
+      <span class="spacer"></span>
+      ${now && !lock ? `<button class="btn primary" type="button" data-act="check" id="check" ${a===null?"disabled":""}>Check answer</button>` : nextBtn}
+    </div>`;
+}
+
+function result(){
+  const sc = score(), pct = Math.round(sc/N*100), set = s.pass>0, pass = set && pct>=s.pass;
+  const msg = pct===100 ? "Perfect. Every answer correct." : pct>=80 ? "Very good. Just a detail or two to polish."
+            : pass ? "You passed. Look at the answers below to see what to polish." : set ? "These phrases need more practice. Read the answers below, then try again." : "Look at the answers below to see what to polish.";
+  const pic = !s.bulls || !set ? "" : `<img class="strip" src="${pass ? BULL.pass : BULL.fail}" alt="">`;
+  return `
+    ${pic}
+    <div>
+      ${set ? `<span class="pill ${pass?"pass":"fail"}">${pass?"Passed":"Not passed yet"}</span>` : ""}
+      <h2 style="margin-top:${set?12:0}px">${s.name ? esc(s.name) + ", here is your result" : "Here is your result"}</h2>
+      <div class="score" style="margin-top:16px"><span class="big">${sc} / ${N}</span><span class="pct">${pct}%</span></div>
+      <p style="margin:16px 0 0">${msg}</p>
+    </div>
+    <ul class="review">
+      ${QUIZ.map((q,i)=>{ const a=s.answers[i], ok=a===q.key;
+        return `<li class="${ok?"ok":"bad"}"><span class="mark" aria-hidden="true">${ok?"✓":"✗"}</span>
+          <span class="q">${i+1}. ${q.ask}</span>
+          <span class="a">${ok ? `Your answer: <b>${esc(q.opts[a])}</b>`
+            : `Your answer: <b class="yours">${a===null?"no answer":esc(q.opts[a])}</b> · Correct: <b class="right">${esc(q.opts[q.key])}</b>`}</span></li>`; }).join("")}
+    </ul>
+    <div class="row">
+      <button class="btn cta" type="button" data-act="restart">Try again</button>
+      <button class="btn" type="button" disabled>Back to the lesson</button>
+    </div>`;
+}
+
+function finish(force){
+  if(!force && answered()<N){ s.warn=true; s.failed=false; return render(); }
+  if(offline.checked){ s.failed=true; s.warn=false; return render(); }
+  s.failed=false; s.warn=false; s.view="result"; render(); window.scrollTo({top:0});
+}
+function restart(){ s = Object.assign(fresh(), {name:s.name, mode:modeEl.value, bulls:bullsEl.checked, pass:+passEl.value}); render(); }
+
+stage.addEventListener("change", e=>{
+  if(e.target.name!=="ans") return;
+  const first = s.answers[s.i]===null;
+  s.answers[s.i]=+e.target.value;
+  if(s.mode==="now"){ save(); const c=document.getElementById("check"); if(c) c.disabled=false; }
+  else { if(first) justDone=s.i; render(); const r=document.getElementById("o"+s.answers[s.i]); if(r) r.focus({preventScroll:true}); }
+});
+stage.addEventListener("input", e=>{ if(e.target.id==="name"){ s.name=e.target.value.trim(); save(); } });
+stage.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.page!==undefined){ s.page=+b.dataset.page; return render(); }
+  if(b.dataset.go!==undefined){ go(+b.dataset.go); s.warn=false; s.failed=false; return render(); }
+  switch(b.dataset.act){
+    case "start": { s.view="quiz"; const first=s.answers.indexOf(null); go(first<0 ? N-1 : first); return render(); }
+    case "restart": return restart();
+    case "check": if(s.answers[s.i]!==null){ s.locked[s.i]=true; justDone=s.i; } return render();
+    case "next": go(s.i+1); return render();
+    case "back": go(s.i-1); return render();
+    case "finish": return finish(false);
+    case "force": return finish(true);
+  }
+});
+offline.addEventListener("change", ()=>{ if(!offline.checked) s.failed=false; render(); });
+bullsEl.addEventListener("change", ()=>{ s.bulls=bullsEl.checked; render(); });
+modeEl.addEventListener("change", ()=>{ s.mode=modeEl.value;
+  // In "after each question" mode an answer already given counts as checked.
+  s.locked = s.answers.map(a=>s.mode==="now" && a!==null); render(); });
+lenEl.addEventListener("change", ()=>{ setLen(+lenEl.value); restart(); });
+passEl.addEventListener("change", ()=>{ s.pass=+passEl.value; render(); });
+PHONE.addEventListener("change", ()=>{ go(s.i); render(); });
+document.getElementById("reset").addEventListener("click", ()=>{ offline.checked=false; modeEl.value="end"; bullsEl.checked=true; lenEl.value="10"; passEl.value="0"; setLen(10); s=fresh(); render(); });
+render();
+</script>
