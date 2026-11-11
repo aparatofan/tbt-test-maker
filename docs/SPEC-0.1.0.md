@@ -72,6 +72,23 @@ Report on each point:
 
 Otherwise end Phase 0 with the report and wait for Mariusz to say go.
 
+### Phase 0 decisions
+
+Phase 0 stopped because the two token files differ in values. Mariusz decided the following on 11 November 2026. Where these differ from the prototypes, these decisions win.
+
+1. **Tokens.** Vendor Drag & Drop's file (TBT Hub canonical tokens v2.1) unchanged at `assets/css/tbt-tokens.css`, under the shared style handle `tbt-tokens`, registered only when Hub has not registered it. The five tokens the prototypes use that v2.1 lacks are defined once, as `tbttm-` custom properties built from tokens, with no literal colours:
+   - `--tbttm-blue-wash` → `var(--tbt-selected-bg)`
+   - `--tbttm-white` → `var(--tbt-surface)`
+   - `--tbttm-periwinkle` → `color-mix(in srgb, var(--tbt-blue) 45%, var(--tbt-surface))`
+   - `--tbttm-faint` → `color-mix(in srgb, var(--tbt-muted) 75%, var(--tbt-surface))`
+   - `--tbttm-hero-soft` → `color-mix(in srgb, var(--tbt-surface) 82%, transparent)`
+2. **Fonts.** Bundle Translation Drill's Roboto Slab (latin and latin-ext) and Roboto Mono 700 in `assets/fonts/`, declared in `assets/css/fonts.css`. Roboto itself is not bundled. No Google Fonts.
+3. **Theme overrides.** Drag & Drop's technique: prefixed BEM classes (`tbttm-`) and specificity, no ID anchoring. `!important` only where needed, each one listed in the PR.
+4. **Tool Hero.** Follow the shipped Drag & Drop hero (blue fading to white, `[tbt_tree]` with the logo fallback), rebuilt with `tbttm-` classes and tokens only. Student page: hero always on. Teacher page: on by default; the shortcode attribute `hero="no"` switches it off.
+5. **Settings page.** Nested under TBT Hub when Hub is active, otherwise under the wp-admin Settings menu.
+6. **Caching.** Besides `nocache_headers()` and `DONOTCACHEPAGE`, send `X-LiteSpeed-Cache-Control: no-cache`, as Translation Drill does.
+7. **Deploy.** Besides the two `exclude` lists, add `docs/**` to `paths-ignore`.
+
 ---
 
 ## Naming and constants
