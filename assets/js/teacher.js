@@ -546,9 +546,19 @@
 			return html;
 		}
 
+		/**
+		 * A stage card's heading, the Translation Drill way: the stage number
+		 * in the plugin colour, the name in capitals, a supporting line.
+		 */
+		function stageHead( num, title, sub ) {
+			return '<div class="tbttm-stage__head"><h2 class="tbttm-stage__title"><b class="tbttm-stage__num">' + num + '</b>' + esc( title ) + '</h2>'
+				+ ( sub ? '<p class="tbttm-stage__sub">' + sub + '</p>' : '' ) + '</div>';
+		}
+
 		/** The builder's Share stage card. A draft has nothing to share yet. */
 		function shareHtml() {
-			var html = '<section class="tbttm-stage" id="tbttm-share"><h2 class="tbttm-stage__title">Share</h2>';
+			var html = '<section class="tbttm-stage tbttm-stage--numbered" id="tbttm-share">'
+				+ stageHead( 4, 'Share', 'Send students the link or the QR code, or put the test in a lesson page.' );
 			if ( d.status !== 'published' || ! d.slug ) {
 				return html + '<p class="tbttm-muted">' + ( d.id
 					? 'This test is a draft, so it has no link yet. Publish it to share it with your students.'
@@ -570,7 +580,8 @@
 			html += '<div class="tbttm-stages">';
 
 			// 1. About the test
-			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">About the test</h2>'
+			html += '<section class="tbttm-stage tbttm-stage--numbered">'
+				+ stageHead( 1, 'About the test', 'Name the test and tell students what it practises. The picture is optional.' )
 				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-title">Title</label>'
 				+ '<input class="tbttm-input tbttm-input--content" id="tbttm-f-title" type="text" maxlength="200" data-f="title" value="' + esc( d.title ) + '" placeholder="e.g. Expressing Opinions in English"></div>'
 				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-intro">Introduction</label>'
@@ -586,7 +597,9 @@
 				+ '</section>';
 
 			// 2. Settings
-			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">Settings</h2><div class="tbttm-settings">'
+			html += '<section class="tbttm-stage tbttm-stage--numbered">'
+				+ stageHead( 2, 'Settings', 'When students see the answers, what counts as a pass, and the bull pictures.' )
+				+ '<div class="tbttm-settings">'
 				+ '<div class="tbttm-field"><span class="tbttm-field__label" id="tbttm-fb-label">Feedback</span>'
 				+ '<div class="tbttm-seg" role="radiogroup" aria-labelledby="tbttm-fb-label">'
 				+ '<label><input type="radio" name="tbttm-fb" id="tbttm-fb-end" value="end"' + ( d.feedback === 'end' ? ' checked' : '' ) + '>At the end</label>'
@@ -601,8 +614,8 @@
 				+ '</div></section>';
 
 			// 3. Questions
-			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">Questions</h2>'
-				+ '<p class="tbttm-stage__sub">' + plural( n, 'question', 'questions' ) + '. Click a question to open it. Mark the correct answer with the circle.</p>'
+			html += '<section class="tbttm-stage tbttm-stage--numbered">'
+				+ stageHead( 3, 'Questions', plural( n, 'question', 'questions' ) + '. Click a question to open it. Mark the correct answer with the circle.' )
 				+ d.questions.map( questionHtml ).join( '' )
 				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn" data-act="addq" id="tbttm-addq"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Add question</button>'
 				+ ( imp ? '' : '<button type="button" class="tbttm-btn tbttm-btn--ghost" data-act="imp-open"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Import questions</button>' )
