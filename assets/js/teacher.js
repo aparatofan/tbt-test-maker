@@ -447,7 +447,8 @@
 		var dirty = false;
 		var saving = false;
 		var leaving = false;
-		var frame = null;
+		var uploading = false;
+		var imageError = '';
 
 		function findQ( key ) {
 			return d.questions.find( function ( q ) { return q.key === +key; } );
@@ -576,9 +577,12 @@
 				+ '<textarea class="tbttm-input tbttm-input--content" id="tbttm-f-intro" maxlength="1000" data-f="intro" placeholder="One or two sentences the student reads before starting.">' + esc( d.intro ) + '</textarea></div>'
 				+ '<div class="tbttm-field"><span class="tbttm-field__label">Feature image</span>'
 				+ ( d.image_url ? '<img class="tbttm-feat" src="' + esc( d.image_url ) + '" alt="Feature image preview">' : '' )
-				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn tbttm-btn--small" data-act="img" id="tbttm-img">' + ( d.image_url ? 'Change image' : 'Choose image' ) + '</button>'
-				+ ( d.image_url ? '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="img-del">Remove image</button>' : '' ) + '</div>'
-				+ '<span class="tbttm-hint">Optional. Shown on the start screen.</span></div>'
+				+ '<div class="tbttm-rowline"><label class="tbttm-btn tbttm-btn--small' + ( uploading ? ' is-busy' : '' ) + '" for="tbttm-img" aria-disabled="' + uploading + '">'
+				+ ( uploading ? 'Uploading…' : ( d.image_url ? 'Change image' : 'Choose image' ) ) + '</label>'
+				+ '<input class="tbttm-sr-only" id="tbttm-img" type="file" accept="image/jpeg,image/png,image/webp"' + ( uploading ? ' disabled' : '' ) + '>'
+				+ ( d.image_url && ! uploading ? '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="img-del">Remove image</button>' : '' ) + '</div>'
+				+ ( imageError ? '<p class="tbttm-note tbttm-note--error" role="alert">' + esc( imageError ) + '</p>' : '' )
+				+ '<span class="tbttm-hint">Optional. Shown on the start screen. A JPG, PNG or WebP picture up to 5 MB; big pictures are made smaller automatically.</span></div>'
 				+ '</section>';
 
 			// 2. Settings
@@ -734,30 +738,88 @@
 			} );
 		}
 
-		/* ----- media library ----- */
+		/* ----- feature image ----- */
 
-		function chooseImage() {
-			if ( ! window.wp || ! window.wp.media ) {
-				msg = { type: 'err', text: 'The media library could not be opened. Reload the page and try again.' };
-				render();
+		/**
+		 * Make a picture smaller in the browser before it is sent: at most
+		 * 1600px on the longest side. Saves the teacher's upload time; the
+		 * server checks and resizes again whatever arrives. Resolves with the
+		 * original file when the browser cannot do it.
+		 */
+		function shrink( file ) {
+			var max = CFG.imageMaxSide || 1600;
+			if ( typeof window.createImageBitmap !== 'function' || ! window.HTMLCanvasElement ) {
+				return Promise.resolve( file );
+			}
+			return window.createImageBitmap( file ).then( function ( bmp ) {
+				var scale = Math.min( 1, max / Math.max( bmp.width, bmp.height ) );
+				if ( scale === 1 && file.size <= ( CFG.imageMaxBytes || 5242880 ) ) {
+					return file;
+				}
+				var canvas = document.createElement( 'canvas' );
+				canvas.width = Math.round( bmp.width * scale );
+				canvas.height = Math.round( bmp.height * scale );
+				canvas.getContext( '2d' ).drawImage( bmp, 0, 0, canvas.width, canvas.height );
+				var type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+				return new Promise( function ( resolve ) {
+					canvas.toBlob( function ( blob ) {
+						resolve( blob ? new File( [ blob ], file.name.replace( /\.[^.]+$/, '' ) + ( type === 'image/png' ? '.png' : '.jpg' ), { type: type } ) : file );
+					}, type, 0.85 );
+				} );
+			} ).catch( function () {
+				return file;
+			} );
+		}
+
+		function uploadImage( file ) {
+			imageError = '';
+			if ( ! /^image\/(jpeg|png|webp)$/.test( file.type ) ) {
+				imageError = 'Use a JPG, PNG or WebP picture.';
+				render( 'tbttm-img' );
 				return;
 			}
-			if ( ! frame ) {
-				frame = window.wp.media( {
-					title: 'Choose a feature image',
-					library: { type: 'image' },
-					button: { text: 'Use this image' },
-					multiple: false,
+			uploading = true;
+			render();
+			shrink( file ).then( function ( small ) {
+				if ( small.size > ( CFG.imageMaxBytes || 5242880 ) ) {
+					throw { message: 'The picture is too big. Choose one under 5 MB.' };
+				}
+				var form = new FormData();
+				form.append( 'image', small, small.name );
+				return send( form, false );
+			} ).then( function ( res ) {
+				uploading = false;
+				d.image_id = res.id;
+				d.image_url = res.url;
+				touch();
+				render( 'tbttm-img' );
+			}, function ( err ) {
+				uploading = false;
+				imageError = ( err && err.message ) || 'The picture could not be uploaded. Try again.';
+				render( 'tbttm-img' );
+			} );
+		}
+
+		/** POST a form to /images, refreshing an expired nonce once. */
+		function send( form, retried ) {
+			return fetch( CFG.rest + 'images', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'X-WP-Nonce': CFG.nonce || '' },
+				body: form,
+			} ).then( function ( res ) {
+				return res.json().catch( function () { return {}; } ).then( function ( data ) {
+					if ( res.ok ) {
+						return data;
+					}
+					if ( data && data.code === 'rest_cookie_invalid_nonce' && ! retried ) {
+						return refreshNonce().then( function () { return send( form, true ); } );
+					}
+					throw { message: ( data && data.message ) || ( res.status === 413 ? 'The picture is too big. Choose one under 5 MB.' : 'The picture could not be uploaded. Try again.' ) };
 				} );
-				frame.on( 'select', function () {
-					var a = frame.state().get( 'selection' ).first().toJSON();
-					d.image_id = a.id;
-					d.image_url = ( a.sizes && a.sizes.large && a.sizes.large.url ) || a.url;
-					touch();
-					render( 'tbttm-img' );
-				} );
-			}
-			frame.open();
+			}, function () {
+				throw { message: 'We couldn’t reach the site. Check your connection and try again.' };
+			} );
 		}
 
 		/* ----- import ----- */
@@ -861,6 +923,11 @@
 				render( t.id );
 				return;
 			}
+			if ( t.id === 'tbttm-img' && t.files && t.files[ 0 ] ) {
+				uploadImage( t.files[ 0 ] );
+				t.value = '';
+				return;
+			}
 			if ( t.id === 'tbttm-imp-file' && t.files && t.files[ 0 ] ) {
 				readFile( t.files[ 0 ] ).then( function ( text ) {
 					if ( ! imp ) {
@@ -949,12 +1016,10 @@
 					render();
 					return;
 				}
-				case 'img':
-					chooseImage();
-					return;
 				case 'img-del':
 					d.image_id = 0;
 					d.image_url = '';
+					imageError = '';
 					touch();
 					render( 'tbttm-img' );
 					return;

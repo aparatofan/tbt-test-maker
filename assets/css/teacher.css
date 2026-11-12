@@ -590,6 +590,17 @@ body {
 	outline: none;
 }
 
+/* The feature image button is a label for a hidden file field: show the
+   field's keyboard focus on the label, and a busy state while uploading. */
+.tbttm label.tbttm-btn:has(+ input:focus-visible) {
+	box-shadow: var(--tbt-focus-ring);
+}
+
+.tbttm label.tbttm-btn.is-busy {
+	cursor: progress;
+	pointer-events: none;
+}
+
 /* ---------- Questions ---------- */
 
 .tbttm .tbttm-q {
