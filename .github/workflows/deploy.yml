@@ -1,0 +1,229 @@
+---
+# Deploys the plugin to the live site over FTPS whenever main changes.
+#
+# How it stays fast: the action keeps a sync-state file
+# (.ftp-deploy-sync-state.json) inside FTP_SERVER_DIR on the server, listing the
+# hash of every file it has uploaded. Each run compares the repo against that
+# file and uploads only what actually changed. The first run is the slow one:
+# with no state file it uploads everything. Do not delete that file on the
+# server; losing it forces another full upload.
+#
+# FTP_SERVER_DIR must be the path as the DEPLOY ACCOUNT sees it after login,
+# which is not necessarily the path your desktop FTP client shows. A deploy-only
+# FTP account is often chrooted into a subdirectory — if it lands in
+# wp-content/plugins/, the correct value here is just /tbt-test-maker/. Get this
+# wrong and the deploy silently creates the whole path as a new tree and reports
+# success while the live site never changes; the preflight below exists to catch
+# exactly that. A trailing slash is added if the secret omits it.
+
+name: Deploy to WordPress
+
+on:
+  push:
+    branches: [ main ]
+    # Documentation-only commits do not need an FTP round trip. If every file in
+    # the push matches one of these, the workflow is skipped entirely.
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview only — log what would be uploaded, change nothing on the server'
+        type: boolean
+        default: false
+      # Diagnostics. Pushes always use the defaults; these only apply to a
+      # manual run, so experimenting here cannot change how a merge deploys.
+      protocol:
+        description: 'Connection type — try "ftp" to test whether TLS is what the data channel is choking on'
+        type: choice
+        default: ftps
+        options: [ ftps, ftp, ftps-legacy ]
+      port:
+        description: 'Port (21 for ftp/ftps, 990 for ftps-legacy)'
+        type: string
+        default: '21'
+      log_level:
+        description: 'Log detail — "verbose" prints every FTP command and reply'
+        type: choice
+        default: standard
+        options: [ standard, verbose ]
+      allow_create:
+        description: 'Allow deploying into a folder that does not hold the plugin yet (genuine first install only)'
+        type: boolean
+        default: false
+
+# Two FTP syncs running at once would race on the same sync-state file and can
+# corrupt it. Queue them instead — and never cancel a run mid-upload, which
+# would leave the server half-updated.
+concurrency:
+  group: ftp-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: FTPS upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      # Fail fast with a readable message rather than letting the FTP client
+      # report a confusing connection error thirty seconds in.
+      - name: Verify the secrets and normalise the target path
+        id: ftp
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          missing=""
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD FTP_SERVER_DIR; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          # The action joins paths by string concatenation, so a missing
+          # trailing slash silently produces `.../pluginstbt-test-maker`. Append one
+          # instead of failing the run over it — the secret is fine either way.
+          # The derived value is masked so the path never reaches the log.
+          case "$FTP_SERVER_DIR" in
+            */) server_dir="$FTP_SERVER_DIR" ;;
+            *)  server_dir="$FTP_SERVER_DIR/" ;;
+          esac
+          echo "::add-mask::$server_dir"
+          echo "server-dir=$server_dir" >> "$GITHUB_OUTPUT"
+
+      # The deploy client creates any directory it cannot find, so a wrong
+      # FTP_SERVER_DIR does not fail — it silently rebuilds the path as a new
+      # tree and reports success, while the live site never changes. Refuse to
+      # deploy unless the target already looks like the installed plugin.
+      - name: Verify the target is the installed plugin folder
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ steps.ftp.outputs.server-dir }}
+          PROTOCOL: ${{ inputs.protocol || 'ftps' }}
+          PORT: ${{ inputs.port || '21' }}
+          ALLOW_CREATE: ${{ inputs.allow_create || false }}
+        run: |
+          if [ "true" = "$ALLOW_CREATE" ]; then
+            echo "allow_create is set — skipping the target check."
+            exit 0
+          fi
+
+          case "$PROTOCOL" in
+            ftps-legacy) url_scheme="ftps"; tls_flag="" ;;
+            ftps)        url_scheme="ftp";  tls_flag="--ssl-reqd" ;;
+            *)           url_scheme="ftp";  tls_flag="" ;;
+          esac
+
+          # FTP_SERVER_DIR starts with "/", so putting another "/" before it
+          # yields the "//" curl needs to read the path as absolute — the same
+          # way the deploy action's client resolves it. Without that the two can
+          # disagree about which directory they are talking about.
+          target_url="$url_scheme://$FTP_SERVER:$PORT/$FTP_SERVER_DIR"
+
+          if ! listing=$( curl -sS --insecure $tls_flag --connect-timeout 30 \
+                            --user "$FTP_USERNAME:$FTP_PASSWORD" \
+                            --list-only "$target_url" 2>&1 ); then
+            echo "::error::Cannot list the deploy target directory. It probably does not exist — which means the deploy would silently CREATE it and upload into a folder WordPress never loads. Check FTP_SERVER_DIR against the path as the deploy account sees it after login; a deploy-only FTP account is often chrooted deeper than your desktop client. curl said: ${listing}"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$listing" | tr -d '\r' | grep -qE '(^|/)tbt-test-maker\.php$'; then
+            echo "::error::The deploy target exists but does not contain tbt-test-maker.php, so it is not the installed plugin folder. Uploading there would leave the live site untouched. Fix FTP_SERVER_DIR, or set allow_create for a genuine first-time install."
+            exit 1
+          fi
+
+          echo "Target verified: tbt-test-maker.php is present, this is the installed plugin folder."
+
+      # The preflight above logs in, lists, and disconnects. Opening a second
+      # FTP session in the same second has coincided with the server resetting
+      # the data connection, so give it a moment to release the first one
+      # before the upload starts.
+      - name: Let the preflight's FTP session close
+        run: sleep 15
+
+      - name: Sync changed files to the server
+        id: sync
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ steps.ftp.outputs.server-dir }}
+          local-dir: ./
+          # A push supplies no inputs, so these fall back to the safe defaults.
+          protocol: ${{ inputs.protocol || 'ftps' }}
+          port: ${{ inputs.port || '21' }}
+          # `loose` skips certificate validation. The transfer is still
+          # encrypted, but it will not verify the server's identity — which is
+          # what makes it work on shared hosts using a self-signed or
+          # mismatched certificate. If your host presents a valid certificate,
+          # change this to `strict` for a properly authenticated connection.
+          security: loose
+          log-level: ${{ inputs.log_level || 'standard' }}
+          # Never wipe the remote directory. A clean slate here would delete
+          # anything on the server that is not in the repo.
+          dangerous-clean-slate: false
+          dry-run: ${{ inputs.dry_run || false }}
+          # Specifying `exclude` replaces the action's defaults, so the .git and
+          # node_modules patterns have to be repeated here.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/node_modules
+            **/*.md
+            *.md
+            .github/**
+            tests/**
+            docs/**
+
+      # The upload client does not retry ECONNRESET — its retry only covers FTP
+      # reply codes 400-499, and it saves its sync state only after a completed
+      # run, so one reset loses the whole attempt. This host resets connections
+      # intermittently, so give it a second go rather than failing the deploy.
+      - name: Wait out the reset before retrying
+        if: steps.sync.outcome == 'failure'
+        run: |
+          echo "First attempt failed — waiting 60s before retrying."
+          sleep 60
+
+      - name: Retry the sync
+        if: steps.sync.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ steps.ftp.outputs.server-dir }}
+          local-dir: ./
+          protocol: ${{ inputs.protocol || 'ftps' }}
+          port: ${{ inputs.port || '21' }}
+          security: loose
+          log-level: ${{ inputs.log_level || 'standard' }}
+          dangerous-clean-slate: false
+          dry-run: ${{ inputs.dry_run || false }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/node_modules
+            **/*.md
+            *.md
+            .github/**
+            tests/**
+            docs/**

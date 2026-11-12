@@ -1,0 +1,211 @@
+<?php
+/**
+ * Standalone tests for TBTTM_Validator.
+ *
+ * The validator is the one definition of what a test may hold: a draft must
+ * always save, and a published test must be complete. These are the rules a
+ * teacher would otherwise meet one refused publish at a time.
+ *
+ * WordPress is not loaded; the handful of WordPress functions the validator
+ * calls are stubbed below with their documented behaviour.
+ *
+ * Run: php tests/test-validator.php
+ */
+error_reporting( E_ALL );
+define( 'ABSPATH', __DIR__ . '/' );
+
+/* ---------- WordPress stubs ---------- */
+
+class WP_Error {
+	private $code;
+	private $message;
+	private $data;
+	public function __construct( $code = '', $message = '', $data = '' ) {
+		$this->code    = $code;
+		$this->message = $message;
+		$this->data    = $data;
+	}
+	public function get_error_code() {
+		return $this->code;
+	}
+	public function get_error_message() {
+		return $this->message;
+	}
+	public function get_error_data() {
+		return $this->data;
+	}
+}
+function is_wp_error( $thing ) {
+	return $thing instanceof WP_Error;
+}
+function __( $text, $domain = null ) {
+	return $text;
+}
+function sanitize_text_field( $str ) {
+	$str = preg_replace( '/<[^>]*>/', '', (string) $str );
+	$str = preg_replace( '/[\r\n\t ]+/', ' ', $str );
+	return trim( $str );
+}
+function sanitize_textarea_field( $str ) {
+	$str = preg_replace( '/<[^>]*>/', '', (string) $str );
+	return trim( $str );
+}
+
+require __DIR__ . '/../includes/class-tbttm-validator.php';
+
+$pass = 0;
+$fail = 0;
+function ok( $cond, $label ) {
+	global $pass, $fail;
+	if ( $cond ) {
+		$pass++;
+	} else {
+		$fail++;
+		echo "FAIL: {$label}\n";
+	}
+}
+function same( $actual, $expected, $label ) {
+	ok( $actual === $expected, $label . ( $actual === $expected ? '' : "\n  expected: " . var_export( $expected, true ) . "\n  actual:   " . var_export( $actual, true ) ) );
+}
+function error_code( $result ) {
+	return is_wp_error( $result ) ? $result->get_error_code() : 'no error';
+}
+
+$v = new TBTTM_Validator();
+
+function question( $body = 'Which is right?', $options = array( 'go', 'goes', 'going' ), $correct = 1, $id = 0 ) {
+	return array(
+		'id'      => $id,
+		'body'    => $body,
+		'options' => $options,
+		'correct' => $correct,
+	);
+}
+function test( array $over = array() ) {
+	return array_merge(
+		array(
+			'title'     => 'Present Simple',
+			'intro'     => 'Ten quick questions.',
+			'image_id'  => 0,
+			'feedback'  => 'end',
+			'bulls'     => true,
+			'pass_mark' => '',
+			'questions' => array( question(), question( 'She ___ to work.', array( 'go', 'goes' ), 1, 7 ) ),
+		),
+		$over
+	);
+}
+
+/* ---------- a valid test ---------- */
+
+$clean = $v->validate( test() );
+ok( ! is_wp_error( $clean ), 'valid test passes validate()' );
+same( $clean['title'], 'Present Simple', 'valid: title kept' );
+same( count( $clean['questions'] ), 2, 'valid: both questions kept' );
+same( $clean['questions'][1]['id'], 7, 'valid: question ID kept for a stable update' );
+same( $clean['questions'][0]['correct'], 1, 'valid: correct index kept' );
+same( $clean['pass_mark'], null, 'valid: empty pass mark is null' );
+same( $clean['feedback'], 'end', 'valid: feedback end' );
+same( $clean['bulls'], true, 'valid: bulls on' );
+
+/* ---------- publishing rules ---------- */
+
+same( error_code( $v->validate( test( array( 'title' => '   ' ) ) ) ), 'tbttm_no_title', 'publish: title required' );
+same( error_code( $v->validate( test( array( 'questions' => array() ) ) ) ), 'tbttm_no_questions', 'publish: at least one question' );
+
+$r = $v->validate( test( array( 'questions' => array( question(), question( '' ) ) ) ) );
+same( error_code( $r ), 'tbttm_unfinished_questions', 'publish: question needs a body' );
+same( is_wp_error( $r ) ? $r->get_error_message() : '', 'Question 2 is not finished: no question text.', 'publish: message names question 2 and the problem' );
+same( is_wp_error( $r ) ? $r->get_error_data()['questions'] : null, array( 2 ), 'publish: error data lists question 2' );
+
+$r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'only', '', '' ), 0 ) ) ) ) );
+same( is_wp_error( $r ) ? $r->get_error_message() : '', 'Question 1 is not finished: needs two answers.', 'publish: two non-empty options' );
+
+$r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'a', 'b' ), null ) ) ) ) );
+same( is_wp_error( $r ) ? $r->get_error_message() : '', 'Question 1 is not finished: no correct answer.', 'publish: correct index required' );
+
+$r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'a', 'b', '' ), 2 ) ) ) ) );
+same( is_wp_error( $r ) ? $r->get_error_message() : '', 'Question 1 is not finished: no correct answer.', 'publish: correct must point at a non-empty option' );
+
+$r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'a', 'b' ), 5 ) ) ) ) );
+same( error_code( $r ), 'tbttm_unfinished_questions', 'publish: correct past the options is refused' );
+
+$r = $v->validate( test( array( 'questions' => array( question(), question( '' ), question(), question( 'Q', array( 'a' ), 0 ) ) ) ) );
+same(
+	is_wp_error( $r ) ? $r->get_error_message() : '',
+	'Questions 2, 4 are not finished. Question 2: no question text. Question 4: needs two answers.',
+	'publish: several unfinished questions are all named'
+);
+same( is_wp_error( $r ) ? $r->get_error_data()['questions'] : null, array( 2, 4 ), 'publish: error data lists 2 and 4' );
+
+$many = array();
+for ( $i = 0; $i < 12; $i++ ) {
+	$many[] = question( '' );
+}
+$r = $v->validate( test( array( 'questions' => $many ) ) );
+ok( is_wp_error( $r ) && 0 === strpos( $r->get_error_message(), 'Questions 1, 2, 3, 4, 5, 6, 7, 8… are not finished.' ), 'publish: long list is cut with …' );
+
+$r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'a', '', 'c', 'd' ), 2 ) ) ) ) );
+same( is_wp_error( $r ) ? null : $r['questions'][0], array( 'id' => 0, 'body' => 'Q', 'options' => array( 'a', 'c', 'd' ), 'correct' => 1 ), 'publish: empty options dropped, key follows its option' );
+
+/* ---------- limits ---------- */
+
+$r = $v->sanitise( test( array( 'title' => str_repeat( 'ą', 250 ) ) ) );
+same( mb_strlen( $r['title'] ), 200, 'limit: title 200 characters (multibyte)' );
+
+$r = $v->sanitise( test( array( 'intro' => str_repeat( 'x', 1200 ) ) ) );
+same( strlen( $r['intro'] ), 1000, 'limit: introduction 1,000 characters' );
+
+$r = $v->sanitise( test( array( 'questions' => array( question( str_repeat( 'y', 2100 ) ) ) ) ) );
+same( strlen( $r['questions'][0]['body'] ), 2000, 'limit: question body 2,000 characters' );
+
+$r = $v->sanitise( test( array( 'questions' => array( question( "Tom: Hi.\r\nJenny: Hello!\r\n\r\nWho speaks?" ) ) ) ) );
+same( $r['questions'][0]['body'], "Tom: Hi.\nJenny: Hello!\n\nWho speaks?", 'limit: body keeps its line breaks' );
+
+$r = $v->sanitise( test( array( 'questions' => array( question( 'Q', array( '1', '2', '3', '4', '5', '6', '7', '8' ), 0 ) ) ) ) );
+same( count( $r['questions'][0]['options'] ), 6, 'limit: at most six options' );
+
+$r = $v->sanitise( test( array( 'questions' => array( question( 'Q', array( str_repeat( 'o', 400 ), 'b' ), 0 ) ) ) ) );
+same( strlen( $r['questions'][0]['options'][0] ), 300, 'limit: option text 300 characters' );
+
+$two_hundred_one = array_fill( 0, 201, question() );
+same( count( $v->sanitise( test( array( 'questions' => $two_hundred_one ) ) )['questions'] ), 200, 'limit: sanitise keeps at most 200 questions' );
+same( error_code( $v->validate( test( array( 'questions' => $two_hundred_one ) ) ) ), 'tbttm_too_many_questions', 'limit: validate refuses 201 questions' );
+ok( ! is_wp_error( $v->validate( test( array( 'questions' => array_fill( 0, 200, question() ) ) ) ) ), 'limit: 200 questions publish' );
+
+foreach ( array( '60' => 60, 60 => 60, '1' => 1, '100' => 100, ' 75 ' => 75 ) as $in => $out ) {
+	same( $v->validate( test( array( 'pass_mark' => is_int( $in ) ? $in : (string) $in ) ) )['pass_mark'], $out, "limit: pass mark '{$in}' accepted" );
+}
+foreach ( array( '0', '101', '50.5', 'abc', '-5' ) as $bad ) {
+	same( error_code( $v->validate( test( array( 'pass_mark' => $bad ) ) ) ), 'tbttm_bad_pass_mark', "limit: pass mark '{$bad}' refused" );
+	same( $v->sanitise( test( array( 'pass_mark' => $bad ) ) )['pass_mark'], null, "limit: draft pass mark '{$bad}' becomes not set" );
+}
+same( $v->validate( test( array( 'pass_mark' => null ) ) )['pass_mark'], null, 'limit: null pass mark is not set' );
+
+same( $v->sanitise( test( array( 'feedback' => 'now' ) ) )['feedback'], 'now', 'limit: feedback now' );
+same( $v->sanitise( test( array( 'feedback' => 'later' ) ) )['feedback'], 'end', 'limit: unknown feedback becomes end' );
+same( $v->sanitise( test( array( 'bulls' => false ) ) )['bulls'], false, 'bulls: off' );
+same( $v->sanitise( array( 'title' => 'T' ) )['bulls'], true, 'bulls: on by default' );
+same( $v->sanitise( test( array( 'title' => '<b>Bold</b> title' ) ) )['title'], 'Bold title', 'title: tags stripped' );
+
+/* ---------- drafts ---------- */
+
+$draft = test(
+	array(
+		'questions' => array(
+			question(),
+			question( '', array( '', '', '' ), null ),
+			question( 'Half done', array( 'a', '' ), null ),
+		),
+	)
+);
+$r = $v->sanitise( $draft );
+same( count( $r['questions'] ), 3, 'draft: unfinished questions pass sanitise()' );
+same( $r['questions'][1], array( 'id' => 0, 'body' => '', 'options' => array( '', '', '' ), 'correct' => null ), 'draft: an empty question is kept as it is' );
+same( $r['questions'][2]['options'], array( 'a', '' ), 'draft: empty option fields kept in place' );
+same( error_code( $v->validate( $draft ) ), 'tbttm_unfinished_questions', 'draft: the same test cannot be published' );
+same( $v->sanitise( array() )['questions'], array(), 'draft: an empty payload sanitises' );
+same( $v->sanitise( array( 'questions' => 'nonsense' ) )['questions'], array(), 'draft: junk questions ignored' );
+
+echo "{$pass} passed, {$fail} failed\n";
+exit( $fail ? 1 : 0 );
