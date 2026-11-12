@@ -6,6 +6,9 @@
  * embedding in any page or post) or, on the Student page, by ?test={slug}.
  * The attribute wins.
  *
+ * The page has no Tool Hero: it sits under the Divi page's own TBT header, so
+ * the test shows only its title, its introduction and its feature image.
+ *
  * In 0.1.0 every test is for logged-in students only. The questions are
  * printed into the page only after that check, without the answer key, and
  * there is no public route that returns them. A draft is visible only to its
@@ -93,12 +96,9 @@ class TBTTM_Player {
 			}
 		}
 
-		$eyebrow = __( 'The Blue Tree · Test', 'tbt-test-maker' );
-
 		if ( '' === $slug ) {
 			return $this->wrap(
-				TBTTM_Assets::hero( $eyebrow, __( 'Test', 'tbt-test-maker' ), '' )
-				. TBTTM_Assets::message_card(
+				TBTTM_Assets::message_card(
 					__( 'This test is not available.', 'tbt-test-maker' ),
 					__( 'Open a test from the link your teacher shared.', 'tbt-test-maker' )
 				)
@@ -107,8 +107,7 @@ class TBTTM_Player {
 
 		if ( ! is_user_logged_in() ) {
 			return $this->wrap(
-				TBTTM_Assets::hero( $eyebrow, __( 'Test', 'tbt-test-maker' ), '' )
-				. TBTTM_Assets::message_card(
+				TBTTM_Assets::message_card(
 					__( 'Log in to take this test', 'tbt-test-maker' ),
 					__( 'This test is for TBT students. Log in and it opens straight away.', 'tbt-test-maker' ),
 					wp_login_url( $here ? $here : '' ),
@@ -122,8 +121,7 @@ class TBTTM_Player {
 		$is_owner = $test && (int) $test->owner_id === $user_id;
 		if ( ! $test || ( TBTTM_DB::STATUS_PUBLISHED !== $test->status && ! $is_owner ) ) {
 			return $this->wrap(
-				TBTTM_Assets::hero( $eyebrow, __( 'Test', 'tbt-test-maker' ), '' )
-				. TBTTM_Assets::message_card(
+				TBTTM_Assets::message_card(
 					__( 'This test is not available.', 'tbt-test-maker' ),
 					__( 'The link may be old, or your teacher hasn\'t published the test yet.', 'tbt-test-maker' )
 				)
@@ -172,14 +170,19 @@ class TBTTM_Player {
 			'lastResult' => $last_result,
 		);
 
-		$hero = TBTTM_Assets::hero( $eyebrow, (string) $test->title, (string) $test->intro );
+		// No Tool Hero on the student page: the Divi page carries the TBT
+		// header. The test names itself with its title and introduction.
+		$head = '<header class="tbttm-head">'
+			. '<h2 class="tbttm-section-title tbttm-head__title">' . esc_html( (string) $test->title ) . '</h2>'
+			. ( '' !== trim( (string) $test->intro ) ? '<p class="tbttm-head__intro" data-tbttm-intro>' . nl2br( esc_html( (string) $test->intro ) ) . '</p>' : '' )
+			. '</header>';
 		$app  = '<section class="tbttm-stage tbttm-player" data-tbttm-player aria-live="polite">'
 			. '<p class="tbttm-muted">' . esc_html__( 'Loading the test…', 'tbt-test-maker' ) . '</p>'
 			. '<noscript><p>' . esc_html__( 'This test needs JavaScript. Turn it on in your browser and reload the page.', 'tbt-test-maker' ) . '</p></noscript>'
 			. '<script type="application/json" data-tbttm-data>' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE ) . '</script>'
 			. '</section>';
 
-		return $this->wrap( $hero . $app );
+		return $this->wrap( $head . $app );
 	}
 
 	/**

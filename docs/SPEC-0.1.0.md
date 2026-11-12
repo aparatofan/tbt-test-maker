@@ -85,6 +85,7 @@ Phase 0 stopped because the two token files differ in values. Mariusz decided th
 2. **Fonts.** Bundle Translation Drill's Roboto Slab (latin and latin-ext) and Roboto Mono 700 in `assets/fonts/`, declared in `assets/css/fonts.css`. Roboto itself is not bundled. No Google Fonts.
 3. **Theme overrides.** Drag & Drop's technique: prefixed BEM classes (`tbttm-`) and specificity, no ID anchoring. `!important` only where needed, each one listed in the PR.
 4. **Tool Hero.** Follow the shipped Drag & Drop hero (blue fading to white, `[tbt_tree]` with the logo fallback), rebuilt with `tbttm-` classes and tokens only. Student page: hero always on. Teacher page: on by default; the shortcode attribute `hero="no"` switches it off.
+   - *Changed in 0.1.3, at Mariusz's request:* the student page has no hero. The Divi page carries the TBT header; the test shows only its title, its introduction (hidden once the test starts) and its feature image.
 5. **Settings page.** Nested under TBT Hub when Hub is active, otherwise under the wp-admin Settings menu.
 6. **Caching.** Besides `nocache_headers()` and `DONOTCACHEPAGE`, send `X-LiteSpeed-Cache-Control: no-cache`, as Translation Drill does.
 7. **Deploy.** Besides the two `exclude` lists, add `docs/**` to `paths-ignore`.

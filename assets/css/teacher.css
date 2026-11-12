@@ -37,20 +37,6 @@ body {
 
 /* ---------- Admin Bar v2 ---------- */
 
-.tbttm .tbttm-section-title {
-	margin: 0;
-	padding: 0;
-	color: var(--tbt-blue);
-	font-family: var(--tbt-font-content);
-	font-size: 28px;
-	font-weight: 700;
-	line-height: 1.2;
-	letter-spacing: -.01em;
-	/* Divi uppercases headings site-wide; the Admin Bar title is sentence
-	   case. !important (2 of 2), as in Drag & Drop. */
-	text-transform: none !important;
-}
-
 /* One row joined by a thin line: title ─ search ─ button, 10px either side of
    each item. Fixed widths (300 / 250) so the bar reads the same on every
    tool; the lines take what is left. */

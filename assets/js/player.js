@@ -770,6 +770,10 @@
 		}
 
 		function render() {
+			var shell = root.closest( '.tbttm' );
+			if ( shell ) {
+				shell.classList.toggle( 'is-started', s.view !== 'start' );
+			}
 			root.innerHTML = s.view === 'quiz' ? questionScreen() : s.view === 'result' ? resultScreen() : startScreen();
 		}
 
