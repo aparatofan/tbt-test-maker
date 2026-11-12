@@ -327,6 +327,8 @@
 			image_id: src ? src.image_id : 0,
 			image_url: src ? src.image_url : '',
 			status: src ? src.status : 'draft',
+			slug: src ? src.slug : '',
+			url: src ? src.url : '',
 			feedback: src ? src.feedback : 'end',
 			bulls: src ? !! src.bulls : true,
 			pass_mark: src && src.pass_mark ? String( src.pass_mark ) : '',
@@ -437,6 +439,63 @@
 			return html;
 		}
 
+		/**
+		 * The share section, as in the other teacher tools: the QR code and
+		 * the student link (Translation Drill), and the shortcode that embeds
+		 * the test in a lesson page (Matching Game). A draft has nothing to
+		 * share yet.
+		 */
+		function shareHtml() {
+			var html = '<section class="tbttm-stage" id="tbttm-share"><h2 class="tbttm-stage__title">Share</h2>';
+			if ( d.status !== 'published' || ! d.slug ) {
+				return html + '<p class="tbttm-muted">' + ( d.id
+					? 'This test is a draft, so it has no link yet. Publish it to share it with your students.'
+					: 'Save and publish the test to share it with your students.' ) + '</p></section>';
+			}
+			var code = '[tbt_test test="' + d.slug + '"]';
+			html += '<div class="tbttm-share">';
+			if ( d.url ) {
+				html += '<figure class="tbttm-qr" data-tbttm-qr aria-label="QR code for the student link"></figure>';
+			}
+			html += '<div class="tbttm-share__body">';
+			if ( d.url ) {
+				html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-url">Student link</label>'
+					+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-url" type="text" readonly value="' + esc( d.url ) + '">'
+					+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( d.url ) + '" data-label="Copy link">Copy link</button>'
+					+ '<a class="tbttm-btn tbttm-btn--ghost" href="' + esc( d.url ) + '" target="_blank" rel="noopener">Open</a></div>'
+					+ '<span class="tbttm-hint">Students log in to TBT to open it. The link stays the same when you edit the test later.</span></div>';
+			} else {
+				html += '<p class="tbttm-note">No student page is set yet, so the test has no link. An administrator can choose it in Test Maker Settings. The shortcode below works already.</p>';
+			}
+			html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-code">Put it in a lesson</label>'
+				+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-code" type="text" readonly value="' + esc( code ) + '">'
+				+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( code ) + '" data-label="Copy shortcode">Copy shortcode</button></div>'
+				+ '<span class="tbttm-hint">Paste it into any page or post, such as a lesson in Divi, and the test appears there.</span></div>';
+			return html + '</div></div></section>';
+		}
+
+		/** Draw the QR code with the token colours, as Translation Drill does. */
+		function drawQr( target, url ) {
+			if ( ! target ) {
+				return;
+			}
+			target.innerHTML = '';
+			if ( ! url || typeof window.QRCode === 'undefined' ) {
+				target.hidden = true;
+				return;
+			}
+			var css = window.getComputedStyle( root );
+			var opts = { text: url, width: 176, height: 176, correctLevel: window.QRCode.CorrectLevel.M };
+			var dark = css.getPropertyValue( '--tbt-ink' ).trim();
+			var light = css.getPropertyValue( '--tbt-surface' ).trim();
+			if ( dark && light ) {
+				opts.colorDark = dark;
+				opts.colorLight = light;
+			}
+			/* eslint-disable-next-line no-new */
+			new window.QRCode( target, opts );
+		}
+
 		function render( focusId ) {
 			var pub = d.status === 'published';
 			var n = d.questions.length;
@@ -493,9 +552,12 @@
 				+ '<span class="tbttm-spacer"></span>'
 				+ ( pub ? '' : '<button type="button" class="tbttm-btn" data-act="save"' + ( saving ? ' disabled' : '' ) + '>Save draft</button>' )
 				+ '<button type="button" class="tbttm-btn tbttm-btn--primary" data-act="publish"' + ( saving ? ' disabled' : '' ) + '>' + ( pub ? 'Save changes' : 'Publish test' ) + '</button>'
-				+ '</div></div>';
+				+ '</div>'
+				+ shareHtml()
+				+ '</div>';
 
 			root.innerHTML = html;
+			drawQr( root.querySelector( '[data-tbttm-qr]' ), pub ? d.url : '' );
 			if ( focusId ) {
 				var el = document.getElementById( focusId );
 				if ( el ) {
@@ -572,6 +634,8 @@
 				var firstSave = ! d.id;
 				d.id = res.id;
 				d.status = res.status;
+				d.slug = res.slug;
+				d.url = res.url;
 				d.image_id = res.image_id;
 				d.image_url = res.image_url;
 				d.pass_mark = res.pass_mark ? String( res.pass_mark ) : '';
@@ -589,7 +653,7 @@
 				dirty = false;
 				showBad = false;
 				msg = { type: 'ok', text: res.status === 'published'
-					? ( wasPublished ? 'Changes saved.' : 'Published. Students can take this test now.' )
+					? ( wasPublished ? 'Changes saved.' : 'Published. Share it with your students below.' )
 					: 'Draft saved.' };
 				if ( firstSave && window.history && window.history.replaceState ) {
 					var url = new URL( window.location.href );
@@ -598,6 +662,12 @@
 					window.history.replaceState( null, '', url.toString() );
 				}
 				render();
+				if ( res.status === 'published' && ! wasPublished ) {
+					var shareBox = document.getElementById( 'tbttm-share' );
+					if ( shareBox ) {
+						shareBox.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+					}
+				}
 			}, function ( err ) {
 				saving = false;
 				fail( err.message, err.data && err.data.questions );
@@ -853,6 +923,18 @@
 					}, function () {} );
 					return;
 				}
+				case 'copy':
+					copyText( b.dataset.copy ).then( function () {
+						b.textContent = 'Copied';
+					}, function () {
+						var field = b.parentNode.querySelector( 'input' );
+						if ( field ) {
+							field.select();
+						}
+					} ).then( function () {
+						setTimeout( function () { b.textContent = b.dataset.label; }, 1600 );
+					} );
+					return;
 				case 'imp-add':
 					addImported();
 					return;
