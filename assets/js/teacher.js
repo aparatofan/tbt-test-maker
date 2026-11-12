@@ -1,0 +1,888 @@
+/**
+ * TBT Test Maker — the teacher page ([tbt_test_maker]).
+ *
+ * Two views on one page, as in Translation Drill: the library (painted by the
+ * server; this script adds search, Copy link and Delete) and the builder
+ * (built here from the test's JSON). Follows docs/prototypes/teacher.html,
+ * minus the parts that belong to later releases.
+ */
+( function () {
+	'use strict';
+
+	var CFG = window.TBTTM_TEACHER || {};
+	var PARSE = window.TBTTMParse || null;
+	var LETTERS = 'abcdef';
+	var MAX_Q = CFG.maxQuestions || 200;
+	var MAX_OPTIONS = 6;
+
+	/* ---------------------------------------------------------------------
+	 * Helpers
+	 * ------------------------------------------------------------------- */
+
+	function esc( t ) {
+		return String( t == null ? '' : t ).replace( /[&<>"']/g, function ( c ) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ c ];
+		} );
+	}
+
+	function plural( n, one, many ) {
+		return n + ' ' + ( n === 1 ? one : many );
+	}
+
+	function listNumbers( nums ) {
+		return nums.slice( 0, 8 ).join( ', ' ) + ( nums.length > 8 ? '…' : '' );
+	}
+
+	function copyText( text ) {
+		if ( navigator.clipboard && window.isSecureContext ) {
+			return navigator.clipboard.writeText( text );
+		}
+		return new Promise( function ( resolve, reject ) {
+			var ta = document.createElement( 'textarea' );
+			ta.value = text;
+			ta.setAttribute( 'readonly', '' );
+			ta.style.position = 'fixed';
+			ta.style.opacity = '0';
+			document.body.appendChild( ta );
+			ta.select();
+			try {
+				document.execCommand( 'copy' ) ? resolve() : reject();
+			} catch ( e ) {
+				reject( e );
+			}
+			document.body.removeChild( ta );
+		} );
+	}
+
+	var noncePromise = null;
+
+	function refreshNonce() {
+		if ( ! noncePromise ) {
+			noncePromise = fetch( CFG.ajax + ( CFG.ajax.indexOf( '?' ) < 0 ? '?' : '&' ) + 'action=tbttm_nonce', {
+				credentials: 'same-origin',
+				cache: 'no-store',
+			} ).then( function ( res ) {
+				return res.json();
+			} ).then( function ( data ) {
+				if ( ! data || ! data.success ) {
+					throw new Error( 'nonce' );
+				}
+				CFG.nonce = data.data.nonce;
+			} ).finally( function () {
+				noncePromise = null;
+			} );
+		}
+		return noncePromise;
+	}
+
+	/**
+	 * One REST call. Rejects with { code, message, data }. An expired nonce
+	 * is refreshed and the call retried once.
+	 */
+	function api( method, path, body, retried ) {
+		var opts = {
+			method: method,
+			credentials: 'same-origin',
+			cache: 'no-store',
+			headers: { 'X-WP-Nonce': CFG.nonce || '' },
+		};
+		if ( body !== undefined ) {
+			opts.headers[ 'Content-Type' ] = 'application/json';
+			opts.body = JSON.stringify( body );
+		}
+		return fetch( CFG.rest + path, opts ).then( function ( res ) {
+			return res.json().catch( function () { return {}; } ).then( function ( data ) {
+				if ( res.ok ) {
+					return data;
+				}
+				if ( data && data.code === 'rest_cookie_invalid_nonce' && ! retried ) {
+					return refreshNonce().then( function () {
+						return api( method, path, body, true );
+					} );
+				}
+				throw {
+					code: ( data && data.code ) || 'http_' + res.status,
+					message: ( data && data.message ) || 'Something went wrong. Try again.',
+					data: ( data && data.data ) || {},
+				};
+			} );
+		}, function () {
+			throw { code: 'network', message: 'We couldn’t reach the site. Check your connection and try again.', data: {} };
+		} );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Library
+	 * ------------------------------------------------------------------- */
+
+	/** One card. Keep in step with TBTTM_Teacher::render_card(). */
+	function cardHtml( t ) {
+		var pub = t.status === 'published';
+		return '<article class="tbttm-card" data-tbttm-card data-id="' + t.id + '" data-attempts="' + t.attempts + '">'
+			+ '<h3 class="tbttm-card__title">' + esc( t.title ) + '</h3>'
+			+ '<div class="tbttm-card__meta"><span class="tbttm-status ' + ( pub ? 'tbttm-status--published' : 'tbttm-status--draft' ) + '">' + ( pub ? 'Published' : 'Draft' ) + '</span>'
+			+ '<span>' + plural( t.questions, 'question', 'questions' ) + '</span>'
+			+ ( pub ? '<span>' + plural( t.attempts, 'attempt', 'attempts' ) + '</span>' : '' ) + '</div>'
+			+ '<div class="tbttm-card__actions" data-tbttm-actions>'
+			+ '<a class="tbttm-btn tbttm-btn--small" href="' + esc( t.edit_url ) + '">Edit</a>'
+			+ ( pub && t.url ? '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-tbttm-copy="' + esc( t.url ) + '">Copy link</button>' : '' )
+			+ '<span class="tbttm-spacer"></span>'
+			+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-tbttm-delete>Delete</button>'
+			+ '</div></article>';
+	}
+
+	function Library( root ) {
+		var input = root.querySelector( '[data-tbttm-search]' );
+		var clearBtn = root.querySelector( '[data-tbttm-search-clear]' );
+		var grid = root.querySelector( '[data-tbttm-grid]' );
+		var summary = root.querySelector( '[data-tbttm-summary]' );
+		var nomatch = root.querySelector( '[data-tbttm-nomatch]' );
+		var total = +root.dataset.total || 0;
+		var timer = null;
+		var seq = 0;
+
+		function runSearch() {
+			var term = input ? input.value.trim() : '';
+			var mine = ++seq;
+			api( 'GET', 'tests' + ( CFG.rest.indexOf( '?' ) < 0 ? '?' : '&' ) + 'search=' + encodeURIComponent( term ) ).then( function ( res ) {
+				if ( mine !== seq ) {
+					return;
+				}
+				total = res.total;
+				grid.innerHTML = res.tests.map( cardHtml ).join( '' );
+				if ( term ) {
+					summary.innerHTML = res.tests.length + ' of ' + plural( total, 'test', 'tests' )
+						+ ' · <button type="button" class="tbttm-linkbtn" data-tbttm-clear>Clear filters</button>';
+					summary.hidden = false;
+				} else {
+					summary.hidden = true;
+				}
+				nomatch.hidden = ! ( term && ! res.tests.length );
+			}, function ( err ) {
+				if ( mine !== seq ) {
+					return;
+				}
+				summary.textContent = err.message;
+				summary.hidden = false;
+			} );
+		}
+
+		function onInput() {
+			if ( clearBtn ) {
+				clearBtn.hidden = ! input.value;
+			}
+			clearTimeout( timer );
+			timer = setTimeout( runSearch, 300 );
+		}
+
+		function clearSearch() {
+			if ( ! input ) {
+				return;
+			}
+			input.value = '';
+			clearBtn.hidden = true;
+			clearTimeout( timer );
+			runSearch();
+			input.focus();
+		}
+
+		if ( input ) {
+			input.addEventListener( 'input', onInput );
+			input.addEventListener( 'keydown', function ( e ) {
+				if ( e.key === 'Escape' && input.value ) {
+					e.preventDefault();
+					clearSearch();
+				}
+			} );
+		}
+
+		// "/" focuses the search unless a text field or a dialog has the keyboard.
+		document.addEventListener( 'keydown', function ( e ) {
+			if ( e.key !== '/' || ! input || e.ctrlKey || e.metaKey || e.altKey ) {
+				return;
+			}
+			var a = document.activeElement;
+			var typing = a && ( /^(INPUT|TEXTAREA|SELECT)$/.test( a.tagName ) || a.isContentEditable );
+			if ( typing || document.querySelector( 'dialog[open], [role="dialog"]:not([hidden]), .media-modal' ) ) {
+				return;
+			}
+			e.preventDefault();
+			input.focus();
+		} );
+
+		root.addEventListener( 'click', function ( e ) {
+			var b = e.target.closest( 'button' );
+			if ( ! b || ! root.contains( b ) ) {
+				return;
+			}
+			var card = b.closest( '[data-tbttm-card]' );
+
+			if ( b === clearBtn || b.hasAttribute( 'data-tbttm-clear' ) ) {
+				clearSearch();
+				return;
+			}
+
+			if ( b.hasAttribute( 'data-tbttm-copy' ) ) {
+				var label = b.textContent;
+				copyText( b.getAttribute( 'data-tbttm-copy' ) ).then( function () {
+					b.textContent = 'Link copied';
+				}, function () {
+					b.textContent = 'Copy failed';
+				} ).then( function () {
+					setTimeout( function () { b.textContent = label; }, 1600 );
+				} );
+				return;
+			}
+
+			if ( b.hasAttribute( 'data-tbttm-delete' ) && card ) {
+				var n = +card.dataset.attempts || 0;
+				var actions = card.querySelector( '[data-tbttm-actions]' );
+				actions.hidden = true;
+				var confirm = document.createElement( 'div' );
+				confirm.className = 'tbttm-confirm';
+				confirm.setAttribute( 'data-tbttm-confirm', '' );
+				confirm.innerHTML = '<span>Delete this test' + ( n ? ' and its ' + plural( n, 'result', 'results' ) : '' ) + '?</span>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-tbttm-delete-yes>Delete test</button>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-tbttm-delete-no>Cancel</button>';
+				card.appendChild( confirm );
+				confirm.querySelector( '[data-tbttm-delete-no]' ).focus();
+				return;
+			}
+
+			if ( b.hasAttribute( 'data-tbttm-delete-no' ) && card ) {
+				card.querySelector( '[data-tbttm-confirm]' ).remove();
+				card.querySelector( '[data-tbttm-actions]' ).hidden = false;
+				return;
+			}
+
+			if ( b.hasAttribute( 'data-tbttm-delete-yes' ) && card ) {
+				b.disabled = true;
+				api( 'DELETE', 'tests/' + card.dataset.id ).then( function () {
+					card.remove();
+					total--;
+					if ( total <= 0 ) {
+						// The server decides the empty state: let it paint it.
+						window.location.href = CFG.libraryUrl || window.location.href;
+					}
+				}, function ( err ) {
+					b.disabled = false;
+					var box = card.querySelector( '[data-tbttm-confirm]' );
+					var note = box.querySelector( '.tbttm-note' ) || document.createElement( 'p' );
+					note.className = 'tbttm-note tbttm-note--error';
+					note.textContent = err.message;
+					box.appendChild( note );
+				} );
+			}
+		} );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Builder
+	 * ------------------------------------------------------------------- */
+
+	var TEMPLATE = [
+		[ 'question', 'answer_a', 'answer_b', 'answer_c', 'answer_d', 'correct' ],
+		[ 'Tom: This weather is just horrible today.\nJenny: You can say that again!\n\nCo Jenny ma na myśli?', 'Masz całkowitą rację.', 'Nie jestem pewien.', 'Powtórz to głośniej.', '', 'a' ],
+		[ 'Które zdanie jest poprawne?', 'I am agree with you.', 'I agree to you.', 'I agree with you.', 'I agree you.', 'c' ],
+	];
+
+	/** The first thing that keeps a question from being published, or ''. */
+	function problems( q ) {
+		if ( ! q.body.trim() ) {
+			return 'no question text';
+		}
+		if ( q.options.filter( function ( o ) { return o.trim(); } ).length < 2 ) {
+			return 'needs two answers';
+		}
+		if ( q.correct === null || ! ( q.options[ q.correct ] || '' ).trim() ) {
+			return 'no correct answer';
+		}
+		return '';
+	}
+
+	function Builder( root ) {
+		var dataEl = root.querySelector( '[data-tbttm-data]' );
+		var src = null;
+		try {
+			src = JSON.parse( dataEl ? dataEl.textContent : 'null' );
+		} catch ( e ) {
+			src = null;
+		}
+
+		var uid = 1;
+		function mkq( q ) {
+			return {
+				key: uid++,
+				id: q && q.id ? q.id : 0,
+				body: q && q.body ? q.body : '',
+				options: q && q.options ? q.options.slice() : [ '', '', '' ],
+				correct: q && q.correct !== undefined && q.correct !== null ? q.correct : null,
+			};
+		}
+
+		var d = {
+			id: src ? src.id : 0,
+			title: src ? src.title : '',
+			intro: src ? src.intro : '',
+			image_id: src ? src.image_id : 0,
+			image_url: src ? src.image_url : '',
+			status: src ? src.status : 'draft',
+			feedback: src ? src.feedback : 'end',
+			bulls: src ? !! src.bulls : true,
+			pass_mark: src && src.pass_mark ? String( src.pass_mark ) : '',
+			questions: src ? src.questions.map( mkq ) : [],
+		};
+		var openQ = null;
+		var showBad = false;
+		var msg = null;
+		var imp = null;
+		var dirty = false;
+		var saving = false;
+		var leaving = false;
+		var frame = null;
+
+		function findQ( key ) {
+			return d.questions.find( function ( q ) { return q.key === +key; } );
+		}
+
+		function touch() {
+			dirty = true;
+		}
+
+		/* ----- rendering ----- */
+
+		function questionHtml( q, i ) {
+			var open = openQ === q.key;
+			var p = problems( q );
+			var lines = q.body.split( '\n' ).filter( function ( l ) { return l.trim(); } );
+			var last = lines.length ? lines[ lines.length - 1 ] : '';
+			var filled = q.options.filter( function ( o ) { return o.trim(); } ).length;
+			var n = d.questions.length;
+			var html = '<div class="tbttm-q' + ( open ? ' is-open' : '' ) + ( showBad && p ? ' is-bad' : '' ) + '" id="tbttm-q-' + q.key + '">'
+				+ '<div class="tbttm-q__head"><span class="tbttm-q__n">' + ( i + 1 ) + '</span>'
+				+ '<button type="button" class="tbttm-q__sum' + ( last ? '' : ' is-blank' ) + '" data-act="toggle" data-q="' + q.key + '" aria-expanded="' + open + '" data-sum="' + q.key + '">'
+				+ ( last ? esc( last ) : 'New question' ) + '</button>'
+				+ '<span class="tbttm-q__status' + ( p && showBad ? ' is-miss' : '' ) + '" data-status="' + q.key + '">' + esc( p || plural( filled, 'answer', 'answers' ) ) + '</span>'
+				+ '<button type="button" class="tbttm-icon" data-act="up" data-q="' + q.key + '"' + ( i === 0 ? ' disabled' : '' ) + ' aria-label="Move question ' + ( i + 1 ) + ' up">↑</button>'
+				+ '<button type="button" class="tbttm-icon" data-act="down" data-q="' + q.key + '"' + ( i === n - 1 ? ' disabled' : '' ) + ' aria-label="Move question ' + ( i + 1 ) + ' down">↓</button>'
+				+ '<button type="button" class="tbttm-icon tbttm-icon--del" data-act="delq" data-q="' + q.key + '" aria-label="Remove question ' + ( i + 1 ) + '">×</button>'
+				+ '</div>';
+			if ( open ) {
+				html += '<div class="tbttm-q__body">'
+					+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-qt-' + q.key + '">Question</label>'
+					+ '<textarea class="tbttm-input tbttm-input--content" id="tbttm-qt-' + q.key + '" data-q="' + q.key + '" data-f="body" rows="4" maxlength="2000"'
+					+ ' placeholder="Tom: This weather is just horrible today.&#10;Jenny: You can say that again!&#10;&#10;Co Jenny ma na myśli?">' + esc( q.body ) + '</textarea>'
+					+ '<span class="tbttm-hint">Start a line with a name and a colon, like “Tom:”, and the name shows in bold. Put *stars* around words to show them in italics.</span></div>'
+					+ '<div class="tbttm-field"><span class="tbttm-field__label">Answers</span><div class="tbttm-answers">';
+				q.options.forEach( function ( o, k ) {
+					html += '<div class="tbttm-arow' + ( q.correct === k ? ' is-right' : '' ) + '">'
+						+ '<input type="radio" id="tbttm-key-' + q.key + '-' + k + '" name="tbttm-key-' + q.key + '" data-q="' + q.key + '" data-k="' + k + '"' + ( q.correct === k ? ' checked' : '' ) + ' aria-label="Answer ' + LETTERS[ k ] + ' is correct">'
+						+ '<span class="tbttm-arow__let">' + LETTERS[ k ] + ')</span>'
+						+ '<input class="tbttm-input tbttm-input--content" id="tbttm-qo-' + q.key + '-' + k + '" type="text" maxlength="300" data-q="' + q.key + '" data-o="' + k + '" value="' + esc( o ) + '" aria-label="Answer ' + LETTERS[ k ] + '">'
+						+ '<button type="button" class="tbttm-icon tbttm-icon--del" data-act="delo" data-q="' + q.key + '" data-k="' + k + '"' + ( q.options.length <= 2 ? ' disabled' : '' ) + ' aria-label="Remove answer ' + LETTERS[ k ] + '">×</button></div>';
+				} );
+				html += '</div><div class="tbttm-rowline"><button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-act="addo" data-q="' + q.key + '"' + ( q.options.length >= MAX_OPTIONS ? ' disabled' : '' ) + '>Add answer</button></div></div>'
+					+ '</div>';
+			}
+			return html + '</div>';
+		}
+
+		function importerHtml() {
+			var rows = imp.rows;
+			var good = rows ? rows.filter( function ( r ) { return ! r.problem; } ) : [];
+			var bad = rows ? rows.length - good.length : 0;
+			var html = '<div class="tbttm-imp" id="tbttm-imp">'
+				+ '<h3 class="tbttm-imp__title">Import questions</h3>'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label">1. Use this layout</span>'
+				+ '<span class="tbttm-hint">One question per row. Up to six answers (answer_a to answer_f). In “correct”, put the letter of the right answer. For a dialogue, put each line on a new line inside the question cell (Alt+Enter in Excel).</span>'
+				+ '<div class="tbttm-tblwrap"><table class="tbttm-table"><thead><tr>'
+				+ TEMPLATE[ 0 ].map( function ( c ) { return '<th>' + c + '</th>'; } ).join( '' ) + '</tr></thead><tbody>'
+				+ TEMPLATE.slice( 1 ).map( function ( r ) {
+					return '<tr>' + r.map( function ( c, i ) { return '<td' + ( i === 0 ? ' class="tbttm-table__q"' : '' ) + '>' + esc( c ) + '</td>'; } ).join( '' ) + '</tr>';
+				} ).join( '' )
+				+ '</tbody></table></div>'
+				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn tbttm-btn--small" data-act="imp-tpl">' + ( imp.copied ? 'Template copied' : 'Copy template' ) + '</button>'
+				+ '<span class="tbttm-hint">Then paste it into an empty Excel sheet.</span></div></div>'
+				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-imp-text">2. Paste your rows here</label>'
+				+ '<textarea class="tbttm-input" id="tbttm-imp-text" placeholder="Select the rows in Excel, copy, and paste them here.">' + esc( imp.text ) + '</textarea>'
+				+ '<div class="tbttm-rowline"><label class="tbttm-btn tbttm-btn--small" for="tbttm-imp-file">Choose a CSV file</label>'
+				+ '<input class="tbttm-sr-only" id="tbttm-imp-file" type="file" accept=".csv,.txt,text/csv">'
+				+ '<span class="tbttm-hint">Commas, semicolons and tabs all work.</span></div></div>';
+
+			if ( rows ) {
+				html += '<div class="tbttm-field"><span class="tbttm-field__label">3. Check the result</span>';
+				if ( rows.length ) {
+					html += '<span class="tbttm-hint">' + plural( good.length, 'question', 'questions' ) + ' ready'
+						+ ( bad ? ', ' + plural( bad, 'row', 'rows' ) + ' with a problem. Rows with a problem are left out.' : '.' ) + '</span>'
+						+ '<div class="tbttm-tblwrap"><table class="tbttm-table"><thead><tr><th>Row</th><th>Question</th><th>Answers</th><th>Correct</th><th>Check</th></tr></thead><tbody>'
+						+ rows.map( function ( r ) {
+							return '<tr' + ( r.problem ? ' class="is-bad"' : '' ) + '><td>' + r.row + '</td><td class="tbttm-table__q">' + esc( r.text ) + '</td>'
+								+ '<td>' + r.opts.map( function ( o, k ) { return LETTERS[ k ] + ') ' + esc( o ); } ).join( '\n' ) + '</td>'
+								+ '<td>' + ( r.key === null ? '' : LETTERS[ r.key ] ) + '</td>'
+								+ '<td>' + ( r.problem ? '<span class="tbttm-prob">' + esc( r.problem ) + '</span>' : '<span class="tbttm-fine">✓</span>' ) + '</td></tr>';
+						} ).join( '' )
+						+ '</tbody></table></div>';
+				} else {
+					html += '<p class="tbttm-note tbttm-note--error">No rows found. Paste at least one row with a question, two answers and the correct letter.</p>';
+				}
+				html += '</div>';
+			}
+
+			html += '<div class="tbttm-rowline">'
+				+ ( rows && good.length
+					? '<button type="button" class="tbttm-btn tbttm-btn--primary" data-act="imp-add">Add ' + plural( good.length, 'question', 'questions' ) + '</button>'
+						+ '<button type="button" class="tbttm-btn" data-act="imp-check">Check again</button>'
+					: '<button type="button" class="tbttm-btn tbttm-btn--primary" data-act="imp-check">Check rows</button>' )
+				+ '<button type="button" class="tbttm-btn tbttm-btn--ghost" data-act="imp-close">Cancel</button></div></div>';
+			return html;
+		}
+
+		function render( focusId ) {
+			var pub = d.status === 'published';
+			var n = d.questions.length;
+			var html = '<div class="tbttm-rowline">'
+				+ '<a class="tbttm-btn tbttm-btn--ghost tbttm-backlink" href="' + esc( CFG.libraryUrl ) + '" data-act="back">← Back to tests</a>'
+				+ ( leaving ? '<span class="tbttm-confirm" role="alert"><span>Leave without saving?</span>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="leave-yes" id="tbttm-leave-yes">Leave</button>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-act="leave-no">Stay</button></span>' : '' )
+				+ '</div>';
+
+			html += '<div class="tbttm-stages">';
+
+			// 1. About the test
+			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">About the test</h2>'
+				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-title">Title</label>'
+				+ '<input class="tbttm-input tbttm-input--content" id="tbttm-f-title" type="text" maxlength="200" data-f="title" value="' + esc( d.title ) + '" placeholder="e.g. Expressing Opinions in English"></div>'
+				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-intro">Introduction</label>'
+				+ '<textarea class="tbttm-input tbttm-input--content" id="tbttm-f-intro" maxlength="1000" data-f="intro" placeholder="One or two sentences the student reads before starting.">' + esc( d.intro ) + '</textarea></div>'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label">Feature image</span>'
+				+ ( d.image_url ? '<img class="tbttm-feat" src="' + esc( d.image_url ) + '" alt="Feature image preview">' : '' )
+				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn tbttm-btn--small" data-act="img" id="tbttm-img">' + ( d.image_url ? 'Change image' : 'Choose image' ) + '</button>'
+				+ ( d.image_url ? '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="img-del">Remove image</button>' : '' ) + '</div>'
+				+ '<span class="tbttm-hint">Optional. Shown on the start screen.</span></div>'
+				+ '</section>';
+
+			// 2. Settings
+			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">Settings</h2><div class="tbttm-settings">'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label" id="tbttm-fb-label">Feedback</span>'
+				+ '<div class="tbttm-seg" role="radiogroup" aria-labelledby="tbttm-fb-label">'
+				+ '<label><input type="radio" name="tbttm-fb" id="tbttm-fb-end" value="end"' + ( d.feedback === 'end' ? ' checked' : '' ) + '>At the end</label>'
+				+ '<label><input type="radio" name="tbttm-fb" id="tbttm-fb-now" value="now"' + ( d.feedback === 'now' ? ' checked' : '' ) + '>After each question</label></div>'
+				+ '<span class="tbttm-hint">' + ( d.feedback === 'end' ? 'Students see what they got right on the result screen.' : 'Students check each answer before moving on.' ) + '</span></div>'
+				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-pass">Pass mark</label>'
+				+ '<div class="tbttm-pct"><input class="tbttm-input" id="tbttm-f-pass" type="number" min="1" max="100" step="1" inputmode="numeric" data-f="pass_mark" value="' + esc( d.pass_mark ) + '" placeholder="Not set"><span>%</span></div>'
+				+ '<span class="tbttm-hint">Leave empty for a test with a score but no pass or fail.</span></div>'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label">Bull pictures</span>'
+				+ '<label class="tbttm-switch" for="tbttm-f-bulls"><input id="tbttm-f-bulls" type="checkbox"' + ( d.bulls ? ' checked' : '' ) + '><span>' + ( d.bulls ? 'On' : 'Off' ) + '</span></label>'
+				+ '<span class="tbttm-hint">At the start, in the middle, near the end and at the end.</span></div>'
+				+ '</div></section>';
+
+			// 3. Questions
+			html += '<section class="tbttm-stage"><h2 class="tbttm-stage__title">Questions</h2>'
+				+ '<p class="tbttm-stage__sub">' + plural( n, 'question', 'questions' ) + '. Click a question to open it. Mark the correct answer with the circle.</p>'
+				+ d.questions.map( questionHtml ).join( '' )
+				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn" data-act="addq" id="tbttm-addq"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Add question</button>'
+				+ ( imp ? '' : '<button type="button" class="tbttm-btn tbttm-btn--ghost" data-act="imp-open"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Import questions</button>' )
+				+ ( n >= MAX_Q ? '<span class="tbttm-hint">A test holds at most ' + MAX_Q + ' questions.</span>' : '' ) + '</div>'
+				+ ( imp ? importerHtml() : '' )
+				+ '</section>';
+
+			// Save bar
+			html += '<div class="tbttm-savebar">'
+				+ ( msg ? '<p class="tbttm-note tbttm-note--' + ( msg.type === 'err' ? 'error' : 'ok' ) + '" role="' + ( msg.type === 'err' ? 'alert' : 'status' ) + '">' + esc( msg.text ) + '</p>' : '' )
+				+ '<span class="tbttm-spacer"></span>'
+				+ ( pub ? '' : '<button type="button" class="tbttm-btn" data-act="save"' + ( saving ? ' disabled' : '' ) + '>Save draft</button>' )
+				+ '<button type="button" class="tbttm-btn tbttm-btn--primary" data-act="publish"' + ( saving ? ' disabled' : '' ) + '>' + ( pub ? 'Save changes' : 'Publish test' ) + '</button>'
+				+ '</div></div>';
+
+			root.innerHTML = html;
+			if ( focusId ) {
+				var el = document.getElementById( focusId );
+				if ( el ) {
+					el.focus( { preventScroll: true } );
+				}
+			}
+		}
+
+		/* ----- saving ----- */
+
+		function payload( status ) {
+			return {
+				title: d.title,
+				intro: d.intro,
+				image_id: d.image_id || 0,
+				feedback: d.feedback,
+				bulls: d.bulls,
+				pass_mark: d.pass_mark.trim(),
+				status: status,
+				questions: d.questions.map( function ( q ) {
+					return { id: q.id || 0, body: q.body, options: q.options, correct: q.correct };
+				} ),
+			};
+		}
+
+		function fail( text, numbers ) {
+			msg = { type: 'err', text: text };
+			if ( numbers && numbers.length ) {
+				showBad = true;
+				var first = d.questions[ numbers[ 0 ] - 1 ];
+				openQ = first ? first.key : openQ;
+				render();
+				var row = first && document.getElementById( 'tbttm-q-' + first.key );
+				if ( row ) {
+					row.scrollIntoView( { block: 'center' } );
+				}
+				return;
+			}
+			render();
+		}
+
+		function commit( status ) {
+			if ( saving ) {
+				return;
+			}
+			d.title = d.title.trim();
+			if ( ! d.title ) {
+				fail( 'Give the test a title.' );
+				return;
+			}
+			if ( status === 'published' ) {
+				if ( ! d.questions.length ) {
+					fail( 'Add at least one question before publishing.' );
+					return;
+				}
+				var bad = [];
+				d.questions.forEach( function ( q, i ) {
+					if ( problems( q ) ) {
+						bad.push( i + 1 );
+					}
+				} );
+				if ( bad.length ) {
+					fail( ( bad.length === 1 ? 'Question ' : 'Questions ' ) + listNumbers( bad ) + ( bad.length === 1 ? ' is' : ' are' ) + ' not finished.', bad );
+					return;
+				}
+			}
+
+			var wasPublished = d.status === 'published';
+			saving = true;
+			msg = null;
+			render();
+			api( d.id ? 'PUT' : 'POST', d.id ? 'tests/' + d.id : 'tests', payload( status ) ).then( function ( res ) {
+				saving = false;
+				var firstSave = ! d.id;
+				d.id = res.id;
+				d.status = res.status;
+				d.image_id = res.image_id;
+				d.image_url = res.image_url;
+				d.pass_mark = res.pass_mark ? String( res.pass_mark ) : '';
+				// The server answers in the same order; take its question IDs
+				// and its cleaned content (published tests lose empty answers).
+				res.questions.forEach( function ( sq, i ) {
+					var q = d.questions[ i ];
+					if ( q ) {
+						q.id = sq.id;
+						q.body = sq.body;
+						q.options = sq.options.slice();
+						q.correct = sq.correct;
+					}
+				} );
+				dirty = false;
+				showBad = false;
+				msg = { type: 'ok', text: res.status === 'published'
+					? ( wasPublished ? 'Changes saved.' : 'Published. Students can take this test now.' )
+					: 'Draft saved.' };
+				if ( firstSave && window.history && window.history.replaceState ) {
+					var url = new URL( window.location.href );
+					url.searchParams.delete( CFG.newParam );
+					url.searchParams.set( CFG.editParam, String( d.id ) );
+					window.history.replaceState( null, '', url.toString() );
+				}
+				render();
+			}, function ( err ) {
+				saving = false;
+				fail( err.message, err.data && err.data.questions );
+			} );
+		}
+
+		/* ----- media library ----- */
+
+		function chooseImage() {
+			if ( ! window.wp || ! window.wp.media ) {
+				msg = { type: 'err', text: 'The media library could not be opened. Reload the page and try again.' };
+				render();
+				return;
+			}
+			if ( ! frame ) {
+				frame = window.wp.media( {
+					title: 'Choose a feature image',
+					library: { type: 'image' },
+					button: { text: 'Use this image' },
+					multiple: false,
+				} );
+				frame.on( 'select', function () {
+					var a = frame.state().get( 'selection' ).first().toJSON();
+					d.image_id = a.id;
+					d.image_url = ( a.sizes && a.sizes.large && a.sizes.large.url ) || a.url;
+					touch();
+					render( 'tbttm-img' );
+				} );
+			}
+			frame.open();
+		}
+
+		/* ----- import ----- */
+
+		/**
+		 * A CSV file's text. UTF-8 first; a file that is not valid UTF-8 is
+		 * read as Windows-1250, the encoding Polish Excel uses for plain CSV.
+		 */
+		function readFile( file ) {
+			return file.arrayBuffer().then( function ( buf ) {
+				try {
+					return new TextDecoder( 'utf-8', { fatal: true } ).decode( buf );
+				} catch ( e ) {
+					try {
+						return new TextDecoder( 'windows-1250' ).decode( buf );
+					} catch ( e2 ) {
+						return new TextDecoder( 'utf-8' ).decode( buf );
+					}
+				}
+			} );
+		}
+
+		function checkRows() {
+			imp.rows = PARSE ? PARSE.readRows( imp.text ) : [];
+			render();
+		}
+
+		function addImported() {
+			var good = imp.rows.filter( function ( r ) { return ! r.problem; } );
+			var room = Math.max( 0, MAX_Q - d.questions.length );
+			var add = good.slice( 0, room );
+			var left = good.length - add.length;
+			add.forEach( function ( r ) {
+				d.questions.push( mkq( { body: r.text, options: r.opts, correct: r.key } ) );
+			} );
+			imp = null;
+			touch();
+			msg = { type: 'ok', text: plural( add.length, 'question', 'questions' ) + ' added. Save to keep them.'
+				+ ( left ? ' ' + plural( left, 'row was', 'rows were' ) + ' left out: a test holds at most ' + MAX_Q + ' questions.' : '' ) };
+			render();
+		}
+
+		/* ----- events ----- */
+
+		root.addEventListener( 'input', function ( e ) {
+			var t = e.target;
+			if ( t.id === 'tbttm-imp-text' ) {
+				if ( imp ) {
+					imp.text = t.value;
+				}
+				return;
+			}
+			if ( t.dataset.o !== undefined ) {
+				var qo = findQ( t.dataset.q );
+				qo.options[ +t.dataset.o ] = t.value;
+				refreshHead( qo );
+				touch();
+				return;
+			}
+			if ( t.dataset.q && t.dataset.f === 'body' ) {
+				var qb = findQ( t.dataset.q );
+				qb.body = t.value;
+				refreshHead( qb );
+				touch();
+				return;
+			}
+			if ( t.dataset.f ) {
+				d[ t.dataset.f ] = t.value;
+				touch();
+			}
+		} );
+
+		/** Update a question's closed-row summary and status while typing. */
+		function refreshHead( q ) {
+			var lines = q.body.split( '\n' ).filter( function ( l ) { return l.trim(); } );
+			var last = lines.length ? lines[ lines.length - 1 ] : '';
+			var sum = root.querySelector( '[data-sum="' + q.key + '"]' );
+			if ( sum ) {
+				sum.textContent = last || 'New question';
+				sum.classList.toggle( 'is-blank', ! last );
+			}
+			var st = root.querySelector( '[data-status="' + q.key + '"]' );
+			if ( st ) {
+				var p = problems( q );
+				st.textContent = p || plural( q.options.filter( function ( o ) { return o.trim(); } ).length, 'answer', 'answers' );
+				st.classList.toggle( 'is-miss', !! ( p && showBad ) );
+			}
+		}
+
+		root.addEventListener( 'change', function ( e ) {
+			var t = e.target;
+			if ( t.name === 'tbttm-fb' ) {
+				d.feedback = t.value;
+				touch();
+				render( t.id );
+				return;
+			}
+			if ( t.id === 'tbttm-f-bulls' ) {
+				d.bulls = t.checked;
+				touch();
+				render( t.id );
+				return;
+			}
+			if ( t.id === 'tbttm-imp-file' && t.files && t.files[ 0 ] ) {
+				readFile( t.files[ 0 ] ).then( function ( text ) {
+					if ( ! imp ) {
+						return;
+					}
+					imp.text = text;
+					checkRows();
+				} );
+				return;
+			}
+			if ( t.type === 'radio' && t.dataset.k !== undefined ) {
+				findQ( t.dataset.q ).correct = +t.dataset.k;
+				touch();
+				render( t.id );
+			}
+		} );
+
+		root.addEventListener( 'click', function ( e ) {
+			var b = e.target.closest( 'button, a[data-act]' );
+			if ( ! b || ! root.contains( b ) || ! b.dataset.act || b.disabled ) {
+				return;
+			}
+			var act = b.dataset.act;
+			var q = b.dataset.q ? findQ( b.dataset.q ) : null;
+			var qi = q ? d.questions.indexOf( q ) : -1;
+
+			switch ( act ) {
+				case 'back':
+					if ( dirty ) {
+						e.preventDefault();
+						leaving = true;
+						render( 'tbttm-leave-yes' );
+					}
+					return;
+				case 'leave-yes':
+					dirty = false;
+					window.location.href = CFG.libraryUrl;
+					return;
+				case 'leave-no':
+					leaving = false;
+					render();
+					return;
+				case 'toggle':
+					openQ = openQ === q.key ? null : q.key;
+					render( 'tbttm-qt-' + q.key );
+					return;
+				case 'addq': {
+					if ( d.questions.length >= MAX_Q ) {
+						return;
+					}
+					var nq = mkq( null );
+					d.questions.push( nq );
+					openQ = nq.key;
+					msg = null;
+					touch();
+					render( 'tbttm-qt-' + nq.key );
+					return;
+				}
+				case 'delq':
+					d.questions.splice( qi, 1 );
+					touch();
+					render();
+					return;
+				case 'up':
+					d.questions.splice( qi - 1, 0, d.questions.splice( qi, 1 )[ 0 ] );
+					touch();
+					render();
+					return;
+				case 'down':
+					d.questions.splice( qi + 1, 0, d.questions.splice( qi, 1 )[ 0 ] );
+					touch();
+					render();
+					return;
+				case 'addo':
+					if ( q.options.length < MAX_OPTIONS ) {
+						q.options.push( '' );
+						touch();
+						render( 'tbttm-qo-' + q.key + '-' + ( q.options.length - 1 ) );
+					}
+					return;
+				case 'delo': {
+					var k = +b.dataset.k;
+					q.options.splice( k, 1 );
+					q.correct = q.correct === k ? null : ( q.correct !== null && q.correct > k ? q.correct - 1 : q.correct );
+					touch();
+					render();
+					return;
+				}
+				case 'img':
+					chooseImage();
+					return;
+				case 'img-del':
+					d.image_id = 0;
+					d.image_url = '';
+					touch();
+					render( 'tbttm-img' );
+					return;
+				case 'imp-open':
+					imp = { text: '', rows: null, copied: false };
+					render( 'tbttm-imp-text' );
+					return;
+				case 'imp-close':
+					imp = null;
+					render();
+					return;
+				case 'imp-check':
+					checkRows();
+					return;
+				case 'imp-tpl': {
+					var tsv = TEMPLATE.map( function ( r ) {
+						return r.map( function ( c ) {
+							return /[\n\t"]/.test( c ) ? '"' + c.replace( /"/g, '""' ) + '"' : c;
+						} ).join( '\t' );
+					} ).join( '\n' );
+					copyText( tsv ).then( function () {
+						if ( imp ) {
+							imp.copied = true;
+							render();
+						}
+					}, function () {} );
+					return;
+				}
+				case 'imp-add':
+					addImported();
+					return;
+				case 'save':
+					commit( 'draft' );
+					return;
+				case 'publish':
+					commit( 'published' );
+					return;
+			}
+		} );
+
+		window.addEventListener( 'beforeunload', function ( e ) {
+			if ( dirty ) {
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		} );
+
+		render();
+	}
+
+	function init() {
+		document.querySelectorAll( '[data-tbttm-library]' ).forEach( Library );
+		document.querySelectorAll( '[data-tbttm-builder]' ).forEach( Builder );
+	}
+
+	if ( document.readyState === 'loading' ) {
+		document.addEventListener( 'DOMContentLoaded', init );
+	} else {
+		init();
+	}
+}() );

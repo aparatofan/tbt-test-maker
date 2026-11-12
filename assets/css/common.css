@@ -1,0 +1,374 @@
+/**
+ * TBT Test Maker — what the student and teacher pages share.
+ *
+ * Every colour, radius, shadow and font comes from the shared 'tbt-tokens'
+ * handle (TBT Hub v2.1, or the vendored copy in tbt-tokens.css). No colour is
+ * defined here. The five values the prototypes use that v2.1 lacks are built
+ * from tokens once, below, as --tbttm-* properties (Phase 0 decision 1).
+ *
+ * Theme overrides follow Drag & Drop: prefixed BEM classes and specificity,
+ * a zero-specificity :where() reset, no ID anchoring. Every !important in
+ * this plugin is listed in the 0.1.0 pull request.
+ */
+
+.tbttm {
+	--tbttm-blue-wash: var(--tbt-selected-bg);
+	--tbttm-white: var(--tbt-surface);
+	--tbttm-periwinkle: color-mix(in srgb, var(--tbt-blue) 45%, var(--tbt-surface));
+	--tbttm-faint: color-mix(in srgb, var(--tbt-muted) 75%, var(--tbt-surface));
+	--tbttm-hero-soft: color-mix(in srgb, var(--tbt-surface) 82%, transparent);
+
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	width: 100%;
+	margin: 0;
+	padding: 0 0 48px;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-ui);
+	font-size: 16px;
+	line-height: 1.5;
+	text-align: left;
+}
+
+/* Zero-specificity reset so the theme's typography stops at the plugin edge. */
+:where(.tbttm), :where(.tbttm *), :where(.tbttm *::before), :where(.tbttm *::after) {
+	box-sizing: border-box;
+}
+
+:where(.tbttm p, .tbttm h1, .tbttm h2, .tbttm h3, .tbttm ol, .tbttm ul, .tbttm li, .tbttm fieldset, .tbttm figure) {
+	margin: 0;
+	padding: 0;
+}
+
+:where(.tbttm ol, .tbttm ul) {
+	list-style: none;
+}
+
+:where(.tbttm fieldset) {
+	border: 0;
+	min-width: 0;
+}
+
+:where(.tbttm button) {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+:where(.tbttm input, .tbttm select, .tbttm textarea) {
+	font: inherit;
+	color: inherit;
+}
+
+:where(.tbttm img) {
+	max-width: 100%;
+	height: auto;
+}
+
+/* Divi sets display on many elements, which beats [hidden]'s default.
+   !important (1 of 2): :where() zeroes the specificity, not the priority. */
+:where(.tbttm) [hidden] {
+	display: none !important;
+}
+
+.tbttm-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	border: 0;
+	clip-path: inset(50%);
+}
+
+.tbttm-muted {
+	color: var(--tbt-muted);
+}
+
+.tbttm-spacer {
+	flex: 1;
+}
+
+/* ---------- Tool Hero (Style Book §6B), as Drag & Drop ships it ---------- */
+
+.tbttm .tbttm-hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: clamp(20px, 4vw, 52px);
+	align-items: center;
+	margin: 0;
+	padding: 26px 28px;
+	border-radius: var(--tbt-radius-panel);
+	/* The fade Drag & Drop's player and tools use: copy stays left of the
+	   65% stop, the tree sits on the white end. */
+	background: linear-gradient(92deg, var(--tbt-blue) 0%, var(--tbt-blue) 65%, var(--tbt-surface) 95%);
+	box-shadow: var(--tbt-shadow-raised);
+	color: var(--tbttm-white);
+	overflow: hidden;
+}
+
+.tbttm .tbttm-hero__content {
+	min-width: 0;
+	max-width: 62%;
+}
+
+/* Hub's [tbt_tree] sets its own inline width; the logo is the fallback for a
+   site with Hub deactivated. */
+.tbttm .tbttm-hero .tbt-tree-host {
+	justify-self: end;
+}
+
+.tbttm .tbttm-hero__logo {
+	display: block;
+	width: clamp(120px, 16vw, 180px);
+	max-height: 96px;
+	height: auto;
+	object-fit: contain;
+}
+
+.tbttm .tbttm-hero__eyebrow {
+	margin: 0 0 6px;
+	color: var(--tbttm-hero-soft);
+	font-family: var(--tbt-font-ui);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: .08em;
+	line-height: 1.3;
+	text-transform: uppercase;
+}
+
+.tbttm .tbttm-hero__title {
+	margin: 0;
+	padding: 0;
+	color: var(--tbttm-white);
+	font-family: var(--tbt-font-identity);
+	font-size: 34px;
+	font-weight: 700;
+	line-height: 1.1;
+	letter-spacing: .02em;
+	text-transform: uppercase;
+	text-wrap: balance;
+}
+
+.tbttm .tbttm-hero__support {
+	max-width: 60ch;
+	margin: 10px 0 0;
+	color: var(--tbttm-hero-soft);
+	font-family: var(--tbt-font-ui);
+	font-size: 16px;
+	line-height: 1.5;
+}
+
+/* ---------- Stage cards (Style Book §4, §5) ---------- */
+
+.tbttm .tbttm-stage {
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+	padding: 40px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-panel);
+	background: var(--tbt-surface);
+	box-shadow: var(--tbt-shadow);
+}
+
+.tbttm .tbttm-stage__title {
+	margin: 0;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.3;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.tbttm .tbttm-message {
+	gap: 16px;
+	max-width: 640px;
+}
+
+/* ---------- Buttons ----------
+   Sentence case, 12px corners. The one main action in a view is the
+   uppercase pill (--cta), per Style Book v2.0. Two classes so the theme's
+   bare button and link rules do not win. */
+
+.tbttm .tbttm-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 44px;
+	margin: 0;
+	padding: 0 20px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	background: var(--tbt-surface);
+	color: var(--tbt-blue-dark);
+	font-family: var(--tbt-font-ui);
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.2;
+	letter-spacing: 0;
+	text-align: center;
+	text-decoration: none;
+	text-transform: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: transform .15s var(--tbt-ease), background-color .15s var(--tbt-ease), border-color .15s var(--tbt-ease);
+}
+
+.tbttm .tbttm-btn:hover {
+	background: var(--tbt-selected-bg);
+	color: var(--tbt-blue-dark);
+	text-decoration: none;
+}
+
+.tbttm .tbttm-btn:focus-visible {
+	box-shadow: var(--tbt-focus-ring);
+	outline: none;
+}
+
+.tbttm .tbttm-btn:disabled,
+.tbttm .tbttm-btn[aria-disabled="true"] {
+	opacity: .5;
+	cursor: default;
+	transform: none;
+}
+
+.tbttm .tbttm-btn--primary {
+	border-color: var(--tbt-blue);
+	background: var(--tbt-blue);
+	color: var(--tbttm-white);
+}
+
+.tbttm .tbttm-btn--primary:hover {
+	border-color: var(--tbt-blue-dark);
+	background: var(--tbt-blue-dark);
+	color: var(--tbttm-white);
+	transform: translateY(-1px);
+}
+
+.tbttm .tbttm-btn--primary:disabled:hover {
+	border-color: var(--tbt-blue);
+	background: var(--tbt-blue);
+	transform: none;
+}
+
+.tbttm .tbttm-btn--cta {
+	min-width: 250px;
+	min-height: 53px;
+	padding: 0 24px;
+	border-color: var(--tbt-blue);
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-blue);
+	color: var(--tbttm-white);
+	letter-spacing: var(--tbt-button-track);
+	text-transform: var(--tbt-button-case);
+}
+
+.tbttm .tbttm-btn--cta:hover {
+	border-color: var(--tbt-blue-dark);
+	background: var(--tbt-blue-dark);
+	color: var(--tbttm-white);
+}
+
+.tbttm .tbttm-btn--small {
+	min-height: 36px;
+	padding: 0 14px;
+	border-radius: 10px;
+	font-size: 14px;
+}
+
+.tbttm .tbttm-btn--ghost {
+	border-color: transparent;
+	background: none;
+}
+
+.tbttm .tbttm-btn--danger {
+	border-color: transparent;
+	background: none;
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-btn--danger:hover {
+	background: var(--tbt-error-bg);
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-linkbtn {
+	display: inline;
+	margin: 0 0 0 4px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--tbt-blue);
+	font: inherit;
+	font-weight: 600;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+
+.tbttm .tbttm-linkbtn:focus-visible {
+	border-radius: 2px;
+	outline: 2px solid var(--tbt-blue);
+	outline-offset: 2px;
+}
+
+/* ---------- Notes ---------- */
+
+.tbttm .tbttm-note {
+	margin: 0;
+	padding: 12px 16px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	font-size: 15px;
+}
+
+.tbttm .tbttm-note--error {
+	border-color: var(--tbt-error);
+	background: var(--tbt-error-bg);
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-note--ok {
+	border-color: var(--tbt-success);
+	background: var(--tbt-success-bg);
+	color: var(--tbt-success);
+}
+
+@media (max-width: 640px) {
+	.tbttm .tbttm-hero {
+		padding: 24px;
+	}
+
+	.tbttm .tbttm-hero__title {
+		font-size: 24px;
+	}
+
+	.tbttm .tbttm-stage {
+		gap: 24px;
+		padding: 24px;
+	}
+
+	.tbttm .tbttm-btn--cta {
+		width: 100%;
+		min-width: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tbttm .tbttm-btn {
+		transition: none;
+	}
+
+	.tbttm .tbttm-btn--primary:hover {
+		transform: none;
+	}
+}
