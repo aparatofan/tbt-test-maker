@@ -157,6 +157,7 @@ class TBTTM_Player {
 			'test'       => array(
 				'id'       => (int) $test->id,
 				'title'    => (string) $test->title,
+				'intro'    => (string) $test->intro,
 				'feedback' => 'now' === $test->feedback ? 'now' : 'end',
 				'bulls'    => (bool) (int) $test->bulls,
 				'passMark' => null === $test->pass_mark ? null : (int) $test->pass_mark,

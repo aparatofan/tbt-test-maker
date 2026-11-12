@@ -562,27 +562,49 @@
 
 		/* ----- screens ----- */
 
+		/** Plain text with its line breaks kept. */
+		function lines( text ) {
+			return esc( text ).replace( /\n/g, '<br>' );
+		}
+
+		/**
+		 * The start screen is the test's cover: the feature picture across
+		 * the top of the card, then the eyebrow, the title and the
+		 * introduction, then where the student stands, the facts, and the
+		 * one main action.
+		 */
 		function startScreen() {
-			if ( T.draft ) {
-				return '<div><h2 class="tbttm-stage__title">This test is a draft</h2>'
-					+ '<p class="tbttm-lead">Students can’t see it yet. Publish it on the teacher page to take it or share it.</p></div>'
-					+ facts( data.count || 0 );
-			}
-			if ( ! N ) {
-				return '<p class="tbttm-muted">This test has no questions yet.</p>';
-			}
-			var resume = s.resume && s.resume.answered > 0;
-			var lead = resume
-				? 'You answered ' + s.resume.answered + ' of ' + N + ' questions last time. Your answers are still here.'
-				: 'Read each question and choose one answer.' + ( T.feedback === 'now'
-					? ' You see the correct answer after each question.'
-					: ' You can go back and change an answer at any time.' );
+			var n = T.draft ? ( data.count || 0 ) : N;
 			var html = '';
 			if ( T.image ) {
-				html += '<img class="tbttm-feature" src="' + esc( T.image ) + '" alt="">';
+				html += '<figure class="tbttm-cover"><img src="' + esc( T.image ) + '" alt=""></figure>';
 			}
-			html += '<div><h2 class="tbttm-stage__title">' + ( resume ? 'Welcome back' : 'Before you start' ) + '</h2>'
-				+ '<p class="tbttm-lead">' + esc( lead ) + '</p></div>';
+			html += '<header class="tbttm-start">'
+				+ '<p class="tbttm-eyebrow">Test · ' + plural( n, 'question', 'questions' ) + '</p>'
+				+ '<h2 class="tbttm-section-title tbttm-start__title">' + esc( T.title ) + '</h2>'
+				+ ( T.intro ? '<p class="tbttm-start__intro">' + lines( T.intro ) + '</p>' : '' )
+				+ '</header>';
+
+			if ( T.draft ) {
+				return html + '<div class="tbttm-notice"><p><strong>This test is a draft.</strong> Students can’t see it yet. Publish it on the teacher page to take it or share it.</p></div>';
+			}
+			if ( ! N ) {
+				return html + '<p class="tbttm-muted">This test has no questions yet.</p>';
+			}
+
+			var resume = s.resume && s.resume.answered > 0;
+			if ( resume ) {
+				var pct = Math.round( s.resume.answered / N * 100 );
+				html += '<div class="tbttm-resume">'
+					+ '<p><strong>Welcome back.</strong> You answered ' + s.resume.answered + ' of ' + N + ' questions last time. Your answers are still here.</p>'
+					+ '<div class="tbttm-meter" role="progressbar" aria-label="Answered" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + s.resume.answered + '"><i style="width:' + pct + '%"></i></div>'
+					+ '</div>';
+			} else {
+				html += '<p class="tbttm-lead">Read each question and choose one answer. ' + ( T.feedback === 'now'
+					? 'You see the correct answer after each question.'
+					: 'You can go back and change an answer at any time before you finish.' ) + '</p>';
+			}
+
 			html += facts( N );
 			if ( s.startError ) {
 				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>' + esc( s.startError ) + '</p></div>';
@@ -590,22 +612,21 @@
 			if ( s.resultError ) {
 				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>' + esc( s.resultError ) + '</p></div>';
 			}
-			html += '<div class="tbttm-row">'
+			html += '<div class="tbttm-row tbttm-start__actions">'
 				+ '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="start"' + ( s.busy ? ' disabled' : '' ) + '>'
 				+ ( resume ? 'Continue test' : 'Start test' ) + '</button>'
 				+ ( resume ? '<button class="tbttm-btn" type="button" data-act="restart"' + ( s.busy ? ' disabled' : '' ) + '>Start again</button>' : '' )
+				+ ( s.lastResult ? '<span class="tbttm-spacer"></span><button class="tbttm-linkbtn" type="button" data-act="last">See your last result</button>' : '' )
 				+ '</div>';
-			if ( s.lastResult ) {
-				html += '<p><button class="tbttm-linkbtn" type="button" data-act="last">See your last result</button></p>';
-			}
 			return html;
 		}
 
 		function facts( n ) {
+			var tick = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 			return '<ul class="tbttm-facts">'
-				+ '<li><strong>' + n + '</strong> ' + ( n === 1 ? 'question' : 'questions' ) + '</li>'
-				+ ( T.passMark ? '<li><strong>' + T.passMark + '%</strong> to pass</li>' : '' )
-				+ '<li>Answers are <strong>saved as you go</strong></li>'
+				+ '<li class="tbttm-chip"><strong>' + n + '</strong> ' + ( n === 1 ? 'question' : 'questions' ) + '</li>'
+				+ ( T.passMark ? '<li class="tbttm-chip"><strong>' + T.passMark + '%</strong> to pass</li>' : '' )
+				+ '<li class="tbttm-chip">' + tick + 'Answers saved as you go</li>'
 				+ '</ul>';
 		}
 

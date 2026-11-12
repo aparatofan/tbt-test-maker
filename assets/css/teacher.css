@@ -213,7 +213,7 @@ body {
 
 /* ---------- Library list, as the Matching Game's ----------
    One full-width row per test, 12px apart: Swipe's deck-row shape with the
-   Learn English domain colour as the spine (tbt_matching_game tools.css,
+   plugin colour as the spine, in place of the Matching Game's --tbt-le (tools.css,
    .tbtmg-game-row). Title and facts on the left; the uppercase pill buttons
    OPEN · EDIT · SHARE · DUPLICATE · DELETE on the right; the share panel
    unfolds underneath. */
@@ -244,7 +244,7 @@ body {
 	align-items: center;
 	padding: 16px 24px;
 	border: 1px solid var(--tbt-border);
-	border-left: 6px solid var(--tbt-le);
+	border-left: 6px solid var(--tbttm-accent);
 	border-radius: var(--tbt-radius-card);
 	background: var(--tbt-surface);
 	box-shadow: var(--tbt-shadow);
@@ -254,7 +254,7 @@ body {
 .tbttm .tbttm-test-row:hover {
 	border-color: var(--tbt-blue);
 	/* Re-asserted: the shorthand above would repaint the domain spine blue. */
-	border-left-color: var(--tbt-le);
+	border-left-color: var(--tbttm-accent);
 	box-shadow: var(--tbt-shadow-raised);
 	transform: translateY(-2px);
 }
@@ -424,9 +424,41 @@ body {
 	gap: 24px;
 }
 
+/* Numbered stage cards, the Translation Drill standard: a bar in the
+   plugin colour across the top, "1 ABOUT THE TEST" in Roboto Slab capitals
+   with the number in the plugin colour, and one supporting line. */
+.tbttm .tbttm-stage--numbered {
+	border-top: 5px solid var(--tbttm-accent);
+}
+
+.tbttm .tbttm-stage__head {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.tbttm .tbttm-stage--numbered .tbttm-stage__title {
+	color: var(--tbt-ink);
+	font-size: 28px;
+	line-height: 1.25;
+	letter-spacing: .01em;
+	text-transform: uppercase;
+}
+
+.tbttm .tbttm-stage__num {
+	margin-right: 12px;
+	color: var(--tbttm-accent);
+	font-weight: 700;
+}
+
 .tbttm .tbttm-stage__sub {
-	margin: -16px 0 0;
+	max-width: 72ch;
+	margin: 0;
 	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
+	font-size: 17px;
+	line-height: 1.5;
 }
 
 .tbttm .tbttm-field {
@@ -438,12 +470,15 @@ body {
 
 .tbttm .tbttm-field__label {
 	color: var(--tbt-ink);
-	font-weight: 600;
+	font-family: var(--tbt-font-content);
+	font-size: 16px;
+	font-weight: 700;
 }
 
 .tbttm .tbttm-hint {
 	color: var(--tbt-muted);
-	font-size: 14px;
+	font-size: 15px;
+	line-height: 1.5;
 }
 
 .tbttm .tbttm-input {
@@ -452,7 +487,7 @@ body {
 	height: 44px;
 	margin: 0;
 	padding: 0 16px;
-	border: 1px solid transparent;
+	border: 1px solid var(--tbt-border);
 	border-radius: var(--tbt-radius-control);
 	background: var(--tbt-input);
 	color: var(--tbt-ink);

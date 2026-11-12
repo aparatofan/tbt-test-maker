@@ -14,56 +14,155 @@
 	min-height: 200px;
 }
 
-/* ---------- Title and introduction (no Tool Hero on this page) ---------- */
+/* ---------- The card ----------
+   One stage card carries the whole sitting, with the plugin colour as a bar
+   across its top, as the teacher page's numbered stages have. */
+
+.tbttm .tbttm-player {
+	border-top: 5px solid var(--tbttm-accent);
+	overflow: hidden;
+}
+
+/* ---------- Title above the card (once the test has started) ----------
+   No Tool Hero on this page: the Divi page carries the TBT header. Before
+   the start, the title and introduction live on the cover inside the card,
+   so this line stays hidden; once the student starts, the title alone
+   stays above the questions. */
 
 .tbttm .tbttm-head {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+	display: none;
 }
 
-.tbttm .tbttm-head__intro {
-	max-width: 70ch;
-	margin: 0;
-	color: var(--tbt-muted);
-	font-family: var(--tbt-font-ui);
-	font-size: 17px;
-	line-height: 1.5;
+.tbttm.is-started .tbttm-head {
+	display: block;
 }
 
-/* Once the test has started, the introduction steps aside so every question
-   starts high on the page; the title stays. */
 .tbttm.is-started .tbttm-head__intro {
 	display: none;
 }
 
-/* ---------- Start screen ---------- */
-
-.tbttm .tbttm-lead {
-	margin: 8px 0 0;
-	color: var(--tbt-muted);
+.tbttm .tbttm-head .tbttm-head__title {
+	font-size: 24px;
 }
 
-.tbttm .tbttm-feature {
+/* ---------- Start screen: the test's cover ---------- */
+
+/* The feature picture runs edge to edge across the top of the card. */
+.tbttm .tbttm-cover {
+	margin: -40px -40px 0;
+	padding: 0;
+	aspect-ratio: 16 / 7;
+	max-height: 380px;
+	overflow: hidden;
+	background: var(--tbt-selected-bg);
+}
+
+.tbttm .tbttm-cover img {
 	display: block;
 	width: 100%;
-	max-width: 640px;
-	border-radius: var(--tbt-radius-control);
+	height: 100%;
+	max-width: none;
+	margin: 0;
+	object-fit: cover;
 }
 
+.tbttm .tbttm-start {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.tbttm .tbttm-section-title.tbttm-start__title {
+	font-size: 34px;
+	line-height: 1.15;
+	text-wrap: balance;
+}
+
+.tbttm .tbttm-start__intro {
+	max-width: 62ch;
+	margin: 4px 0 0;
+	color: var(--tbt-muted);
+	font-family: var(--tbt-font-content);
+	font-size: 18px;
+	line-height: 1.55;
+}
+
+.tbttm .tbttm-lead {
+	max-width: 62ch;
+	margin: 0;
+	padding-top: 24px;
+	border-top: 1px solid var(--tbt-border);
+	color: var(--tbt-ink);
+	font-size: 16px;
+	line-height: 1.55;
+}
+
+/* Where a returning student stands: a pale panel with a progress bar. */
+.tbttm .tbttm-resume {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 16px 20px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-card);
+	background: var(--tbt-selected-bg);
+}
+
+.tbttm .tbttm-resume p {
+	margin: 0;
+	color: var(--tbt-ink);
+}
+
+.tbttm .tbttm-meter {
+	height: 8px;
+	overflow: hidden;
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-surface);
+	box-shadow: inset 0 0 0 1px var(--tbt-border);
+}
+
+.tbttm .tbttm-meter i {
+	display: block;
+	height: 100%;
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-blue);
+}
+
+/* The facts as quiet chips. */
 .tbttm .tbttm-facts {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px 32px;
+	gap: 8px;
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	color: var(--tbt-muted);
 }
 
-.tbttm .tbttm-facts strong {
+.tbttm .tbttm-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 6px 14px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-surface);
+	color: var(--tbt-muted);
+	font-size: 14px;
+	line-height: 1.3;
+}
+
+.tbttm .tbttm-chip strong {
 	color: var(--tbt-ink);
-	font-weight: 600;
+	font-weight: 700;
+}
+
+.tbttm .tbttm-chip svg {
+	color: var(--tbt-success);
+}
+
+.tbttm .tbttm-start__actions {
+	padding-top: 8px;
 }
 
 .tbttm .tbttm-row {
@@ -164,12 +263,13 @@
 	visibility: hidden;
 }
 
-/* Answered: the Matching Game's selected card, flat. */
+/* Answered: filled solid blue, flat, so a glance at the row shows what is
+   done and what is still open. */
 .tbttm .tbttm-tile.is-done {
 	border-color: var(--tbt-blue);
-	background: var(--tbt-selected-bg);
+	background: var(--tbt-blue);
 	box-shadow: none;
-	color: var(--tbt-blue-dark);
+	color: var(--tbt-surface);
 }
 
 /* Checked and right: the matched card. */
@@ -273,7 +373,7 @@
 .tbttm .tbttm-qnum {
 	margin: 0;
 	padding: 4px 0 4px 16px;
-	border-left: 6px solid var(--tbt-blue);
+	border-left: 6px solid var(--tbttm-accent);
 	color: var(--tbt-ink);
 	font-family: var(--tbt-font-content);
 	font-size: 28px;
@@ -565,6 +665,19 @@
 }
 
 @media (max-width: 640px) {
+	.tbttm .tbttm-cover {
+		margin: -24px -24px 0;
+		aspect-ratio: 16 / 9;
+	}
+
+	.tbttm .tbttm-section-title.tbttm-start__title {
+		font-size: 28px;
+	}
+
+	.tbttm .tbttm-start__intro {
+		font-size: 17px;
+	}
+
 	.tbttm .tbttm-qbody {
 		font-size: 18px;
 	}
