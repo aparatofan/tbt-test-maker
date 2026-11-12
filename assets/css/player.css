@@ -94,32 +94,46 @@
 	background: none;
 }
 
-.tbttm .tbttm-tiles__page:focus-visible,
-.tbttm .tbttm-tile:focus-visible {
+.tbttm .tbttm-tiles__page:focus-visible {
 	box-shadow: var(--tbt-focus-ring);
 	outline: none;
 }
 
+/* Question tiles, in the Matching Game's card style (tbt_matching_game,
+   game.css .tbtmg-card): a raised card with a 2px blue border, a white-to-
+   pale-blue gradient and a blue-tinted shadow while the question is open;
+   flattened once it is answered, as a matched card is; green or red once it
+   is checked. The Matching Game writes its shadows in rgba(); here they are
+   built from the tokens with color-mix(), so no colour is defined. */
 .tbttm .tbttm-tile {
+	--tbttm-tile-shadow: 0 8px 20px color-mix(in srgb, var(--tbt-blue) 16%, transparent),
+		0 2px 5px color-mix(in srgb, var(--tbt-ink) 8%, transparent);
+	--tbttm-tile-shadow-up: 0 11px 26px color-mix(in srgb, var(--tbt-blue) 22%, transparent),
+		0 3px 7px color-mix(in srgb, var(--tbt-ink) 10%, transparent);
+	--tbttm-tile-ring: 0 0 0 2px var(--tbt-surface), 0 0 0 4px var(--tbt-blue-dark);
+
 	min-width: 0;
-	height: 40px;
+	height: 44px;
 	margin: 0;
 	padding: 0;
-	border: 1px solid var(--tbt-border);
-	border-radius: 10px;
-	background: var(--tbt-surface);
-	color: var(--tbt-muted);
-	font-family: var(--tbt-font-ui);
-	font-size: 14px;
+	border: 2px solid var(--tbt-blue);
+	border-radius: 14px;
+	background: linear-gradient(145deg, var(--tbt-surface) 0%, var(--tbt-selected-bg) 100%);
+	box-shadow: var(--tbttm-tile-shadow);
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 15px;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
-	transition: background-color .2s, color .2s, border-color .2s, transform .2s;
+	transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
 }
 
-.tbttm .tbttm-tile:hover {
-	border-color: var(--tbt-blue);
-	color: var(--tbt-blue);
+.tbttm .tbttm-tile:hover,
+.tbttm .tbttm-tile:focus-visible {
+	border-color: var(--tbt-blue-dark);
+	box-shadow: var(--tbttm-tile-shadow-up);
+	outline: none;
 	transform: translateY(-2px);
 }
 
@@ -127,41 +141,79 @@
 	visibility: hidden;
 }
 
+/* Answered: the Matching Game's selected card, flat. */
 .tbttm .tbttm-tile.is-done {
-	border-color: var(--tbttm-periwinkle);
-	background: var(--tbttm-blue-wash);
-	color: var(--tbt-blue-dark);
-}
-
-.tbttm .tbttm-tile.is-done:hover {
 	border-color: var(--tbt-blue);
+	background: var(--tbt-selected-bg);
+	box-shadow: none;
 	color: var(--tbt-blue-dark);
 }
 
+/* Checked and right: the matched card. */
 .tbttm .tbttm-tile.is-good {
-	border-color: var(--tbt-success);
+	border-color: color-mix(in srgb, var(--tbt-success) 65%, transparent);
 	background: var(--tbt-success-bg);
+	box-shadow: none;
 	color: var(--tbt-success);
 }
 
+/* Checked and wrong: the card the Matching Game shakes on a wrong match. */
 .tbttm .tbttm-tile.is-bad {
 	border-color: var(--tbt-error);
 	background: var(--tbt-error-bg);
+	box-shadow: none;
 	color: var(--tbt-error);
 }
 
-.tbttm .tbttm-tile.is-here {
-	box-shadow: 0 0 0 2px var(--tbt-surface), 0 0 0 4px var(--tbt-blue);
+.tbttm .tbttm-tile.is-done:hover,
+.tbttm .tbttm-tile.is-good:hover,
+.tbttm .tbttm-tile.is-bad:hover {
+	box-shadow: var(--tbttm-tile-shadow-up);
 }
 
+/* The current question keeps a ring outside the card, over whichever state. */
+.tbttm .tbttm-tile.is-here,
+.tbttm .tbttm-tile.is-here:hover {
+	border-color: var(--tbt-blue-dark);
+	box-shadow: var(--tbttm-tile-ring), var(--tbttm-tile-shadow-up);
+}
+
+.tbttm .tbttm-tile.is-here.is-done,
+.tbttm .tbttm-tile.is-here.is-good,
+.tbttm .tbttm-tile.is-here.is-bad {
+	box-shadow: var(--tbttm-tile-ring);
+}
+
+.tbttm .tbttm-tile.is-here.is-good {
+	border-color: var(--tbt-success);
+}
+
+.tbttm .tbttm-tile.is-here.is-bad {
+	border-color: var(--tbt-error);
+}
+
+/* First answer: the Matching Game's match pop. */
 .tbttm .tbttm-tile.is-pop {
-	animation: tbttm-tilepop .45s var(--tbt-ease);
+	animation: tbttm-tilepop .42s ease;
+}
+
+.tbttm .tbttm-tile.is-pop.is-bad {
+	animation: tbttm-tilejitter .38s ease;
 }
 
 @keyframes tbttm-tilepop {
-	0% { transform: scale(.8); }
-	55% { transform: scale(1.12) translateY(-3px); }
+	0% { transform: scale(.98); }
+	55% { transform: scale(1.06); }
 	100% { transform: scale(1); }
+}
+
+@keyframes tbttm-tilejitter {
+	0%, 100% { transform: translateX(0); }
+	18% { transform: translateX(-4px); }
+	36% { transform: translateX(4px); }
+	54% { transform: translateX(-3px); }
+	72% { transform: translateX(2px); }
+	90% { transform: translateX(-1px); }
 }
 
 /* ---------- Count line ---------- */
@@ -508,7 +560,8 @@
 	}
 
 	.tbttm .tbttm-tile {
-		border-radius: 8px;
+		height: 40px;
+		border-radius: 10px;
 		font-size: 13px;
 	}
 
@@ -522,7 +575,8 @@
 		transition: none;
 	}
 
-	.tbttm .tbttm-tile:hover {
+	.tbttm .tbttm-tile:hover,
+	.tbttm .tbttm-tile:focus-visible {
 		transform: none;
 	}
 

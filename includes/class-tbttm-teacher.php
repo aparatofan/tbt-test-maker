@@ -61,7 +61,10 @@ class TBTTM_Teacher {
 		}
 
 		wp_enqueue_script( 'tbttm-parse', TBTTM_URL . 'assets/js/parse.js', array(), TBTTM_VERSION, true );
-		wp_enqueue_script( 'tbttm-teacher', TBTTM_URL . 'assets/js/teacher.js', array( 'tbttm-parse' ), TBTTM_VERSION, true );
+		// The share section's QR code: the same bundled library Translation
+		// Drill uses (qrcodejs, MIT). Drawn in the browser, no request out.
+		wp_enqueue_script( 'tbttm-qrcode', TBTTM_URL . 'assets/js/lib/qrcode.min.js', array(), TBTTM_VERSION, true );
+		wp_enqueue_script( 'tbttm-teacher', TBTTM_URL . 'assets/js/teacher.js', array( 'tbttm-parse', 'tbttm-qrcode' ), TBTTM_VERSION, true );
 		wp_localize_script(
 			'tbttm-teacher',
 			'TBTTM_TEACHER',
