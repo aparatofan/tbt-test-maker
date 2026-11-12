@@ -12,9 +12,27 @@ body {
 	background: var(--tbt-canvas);
 }
 
-.tbttm--teacher {
-	max-width: 1180px;
-	margin: 0 auto;
+/* The tool shell, as Hub's .tbt-tool (tbt-components.css §0, [LOCKED]) that
+   Drag & Drop and the Matching Game sit in: the full width of the Divi row,
+   32px above, 24px either side, 48px below. Spacing comes from the margins
+   below, not the flex gap, so the Admin Bar lands where theirs does: 48px
+   under the hero, cards 24px under the bar. */
+.tbttm.tbttm--teacher {
+	gap: 0;
+	width: 100%;
+	max-width: none;
+	margin: 0;
+	padding: 32px 24px 48px;
+}
+
+.tbttm.tbttm--teacher .tbttm-hero {
+	margin-bottom: 48px;
+}
+
+@media (max-width: 760px) {
+	.tbttm.tbttm--teacher {
+		padding: 16px;
+	}
 }
 
 /* ---------- Admin Bar v2 ---------- */
