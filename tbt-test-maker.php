@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       TBT Test Maker
  * Description:       Multiple-choice tests for The Blue Tree. Teachers build a test or import its questions from Excel; logged-in students take it one question at a time, with every answer saved as it is given, and see their result at the end. Scoring happens on the server.
- * Version:           0.1.2
+ * Version:           0.1.3
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            TBT
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBTTM_VERSION', '0.1.2' );
+define( 'TBTTM_VERSION', '0.1.3' );
 define( 'TBTTM_DB_VERSION', '1.0' );
 define( 'TBTTM_PLUGIN_FILE', __FILE__ );
 define( 'TBTTM_DIR', plugin_dir_path( __FILE__ ) );

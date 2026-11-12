@@ -94,6 +94,23 @@
 	flex: 1;
 }
 
+/* ---------- Section title ---------- */
+
+.tbttm .tbttm-section-title {
+	margin: 0;
+	padding: 0;
+	color: var(--tbt-blue);
+	font-family: var(--tbt-font-content);
+	font-size: 28px;
+	font-weight: 700;
+	line-height: 1.2;
+	letter-spacing: -.01em;
+	/* Divi uppercases headings site-wide; this title is sentence case.
+	   !important (2 of 2), as in Drag & Drop. Used by the Admin Bar title
+	   and by the student page's test title. */
+	text-transform: none !important;
+}
+
 /* ---------- Tool Hero (Style Book §6B), as Drag & Drop ships it ---------- */
 
 .tbttm .tbttm-hero {
