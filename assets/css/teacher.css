@@ -225,15 +225,19 @@ body {
 	}
 }
 
-/* ---------- Library grid ---------- */
+/* ---------- Library list, as the Matching Game's ----------
+   One full-width row per test, 12px apart: Swipe's deck-row shape with the
+   Learn English domain colour as the spine (tbt_matching_game tools.css,
+   .tbtmg-game-row). Title and facts on the left; the uppercase pill buttons
+   OPEN · EDIT · SHARE · DUPLICATE · DELETE on the right; the share panel
+   unfolds underneath. */
 
-.tbttm .tbttm-grid {
+.tbttm .tbttm-list {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-	gap: 24px;
+	gap: 12px;
 }
 
-.tbttm .tbttm-grid:empty {
+.tbttm .tbttm-list:empty {
 	display: none;
 }
 
@@ -243,79 +247,173 @@ body {
 	color: var(--tbt-muted);
 }
 
-.tbttm .tbttm-card {
-	display: flex;
-	flex-direction: column;
+.tbttm .tbttm-library__notice {
+	margin: -8px 0 24px;
+}
+
+.tbttm .tbttm-test-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
 	gap: 16px;
-	padding: 24px;
+	align-items: center;
+	padding: 16px 24px;
 	border: 1px solid var(--tbt-border);
+	border-left: 6px solid var(--tbt-le);
 	border-radius: var(--tbt-radius-card);
 	background: var(--tbt-surface);
 	box-shadow: var(--tbt-shadow);
-	transition: box-shadow .2s;
+	transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
-.tbttm .tbttm-card:hover {
+.tbttm .tbttm-test-row:hover {
+	border-color: var(--tbt-blue);
+	/* Re-asserted: the shorthand above would repaint the domain spine blue. */
+	border-left-color: var(--tbt-le);
 	box-shadow: var(--tbt-shadow-raised);
+	transform: translateY(-2px);
 }
 
-.tbttm .tbttm-card__title {
+/* No text-transform here, as in the Matching Game: Divi's heading style
+   decides the case, so the two libraries read alike. */
+.tbttm .tbttm-test-row__title {
 	margin: 0;
 	padding: 0;
 	color: var(--tbt-ink);
 	font-family: var(--tbt-font-content);
 	font-size: 18px;
 	font-weight: 700;
-	line-height: 1.35;
-	text-transform: none;
-	letter-spacing: 0;
-	text-wrap: balance;
+	line-height: 1.3;
 	overflow-wrap: anywhere;
 }
 
-.tbttm .tbttm-card__meta {
+.tbttm .tbttm-test-row__meta {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 12px;
+	gap: 12px;
 	align-items: center;
+	margin: 8px 0 0;
 	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
 	font-size: 14px;
 }
 
-.tbttm .tbttm-status {
-	padding: 2px 10px;
-	border-radius: var(--tbt-radius-pill);
-	font-family: var(--tbt-font-ui);
-	font-size: 12px;
-	font-weight: 600;
-}
-
-.tbttm .tbttm-status--published {
-	background: var(--tbt-success-bg);
-	color: var(--tbt-success);
-}
-
-.tbttm .tbttm-status--draft {
-	background: var(--tbt-input);
-	color: var(--tbt-muted);
-}
-
-.tbttm .tbttm-card__actions,
+.tbttm .tbttm-test-row__actions,
 .tbttm .tbttm-confirm {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
 	align-items: center;
-	margin-top: auto;
 }
 
 .tbttm .tbttm-confirm {
 	color: var(--tbt-error);
 	font-size: 14px;
+	font-weight: 600;
 }
 
 .tbttm .tbttm-confirm .tbttm-note {
 	flex-basis: 100%;
+}
+
+.tbttm .tbttm-test-row__share {
+	grid-column: 1 / -1;
+}
+
+.tbttm .tbttm-test-row__share .tbttm-share {
+	padding: 24px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-card);
+	background: var(--tbt-selected-bg);
+}
+
+.tbttm .tbttm-test-row__share .tbttm-input {
+	background: var(--tbt-surface);
+}
+
+/* The Matching Game's badge: uppercase, bold, a little tracking. */
+.tbttm .tbttm-badge {
+	padding: 4px 12px;
+	border-radius: var(--tbt-radius-pill);
+	font-family: var(--tbt-font-ui);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+}
+
+.tbttm .tbttm-badge--published {
+	background: var(--tbt-success-bg);
+	color: var(--tbt-success);
+}
+
+.tbttm .tbttm-badge--draft {
+	background: var(--tbt-input);
+	color: var(--tbt-muted);
+}
+
+/* The Matching Game's small button (.tbtmg-button--small): an outlined pill,
+   uppercase blue label with 0.08em tracking. Delete stays grey until hovered. */
+.tbttm .tbttm-rowbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 40px;
+	margin: 0;
+	padding: 8px 24px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-surface);
+	color: var(--tbt-blue);
+	font-family: var(--tbt-font-ui);
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.2;
+	letter-spacing: .08em;
+	text-decoration: none;
+	text-transform: uppercase;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+}
+
+.tbttm .tbttm-rowbtn:hover,
+.tbttm .tbttm-rowbtn[aria-expanded="true"] {
+	border-color: var(--tbt-blue);
+	background: var(--tbt-selected-bg);
+	color: var(--tbt-blue);
+	text-decoration: none;
+}
+
+.tbttm .tbttm-rowbtn:focus-visible {
+	border-color: var(--tbt-blue);
+	box-shadow: var(--tbt-focus-ring);
+	outline: none;
+}
+
+.tbttm .tbttm-rowbtn--danger {
+	color: var(--tbt-muted);
+}
+
+.tbttm .tbttm-rowbtn--danger:hover {
+	border-color: var(--tbt-error);
+	background: var(--tbt-error-bg);
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-rowbtn--danger-solid,
+.tbttm .tbttm-rowbtn--danger-solid:hover {
+	border-color: var(--tbt-error);
+	background: var(--tbt-error);
+	color: var(--tbt-surface);
+}
+
+.tbttm .tbttm-rowbtn:disabled,
+.tbttm .tbttm-rowbtn:disabled:hover {
+	opacity: .5;
+	border-color: var(--tbt-border);
+	background: var(--tbt-surface);
+	color: var(--tbt-muted);
+	cursor: not-allowed;
 }
 
 /* ---------- Builder ---------- */
@@ -839,13 +937,18 @@ body {
 		padding: 16px;
 	}
 
-	.tbttm .tbttm-grid {
+	.tbttm .tbttm-test-row {
 		grid-template-columns: minmax(0, 1fr);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.tbttm .tbttm-card,
+	.tbttm .tbttm-test-row:hover {
+		transform: none;
+	}
+
+	.tbttm .tbttm-test-row,
+	.tbttm .tbttm-rowbtn,
 	.tbttm .tbttm-switch input,
 	.tbttm .tbttm-switch input::before,
 	.tbttm .tbttm-libbar__input {

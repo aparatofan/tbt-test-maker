@@ -219,15 +219,16 @@ class TBTTM_Teacher {
 			</div>
 
 			<p class="tbttm-libbar__summary" data-tbttm-summary aria-live="polite" hidden></p>
+			<p class="tbttm-note tbttm-library__notice" data-tbttm-notice role="status" aria-live="polite" hidden></p>
 
 			<?php if ( $empty ) : ?>
 				<p class="tbttm-library__empty"><?php esc_html_e( 'You have no tests yet. Create the first one.', 'tbt-test-maker' ); ?></p>
 			<?php endif; ?>
 
-			<div class="tbttm-grid" data-tbttm-grid>
+			<div class="tbttm-list" data-tbttm-grid>
 				<?php
 				foreach ( $rows as $row ) {
-					$this->render_card( TBTTM_Rest::test_summary( $row ) );
+					$this->render_row( TBTTM_Rest::test_summary( $row ) );
 				}
 				?>
 			</div>
@@ -240,43 +241,59 @@ class TBTTM_Teacher {
 	}
 
 	/**
-	 * One object card. teacher.js builds the same markup in cardHtml(); keep
-	 * the two in step.
+	 * One test row, in the Matching Game's library layout: title and facts on
+	 * the left, OPEN · EDIT · SHARE · DUPLICATE · DELETE on the right, and the
+	 * share panel unfolding underneath. teacher.js builds the same markup in
+	 * rowHtml(); keep the two in step.
 	 *
 	 * @param array $t Test summary.
 	 */
-	private function render_card( array $t ) {
+	private function render_row( array $t ) {
 		$published = TBTTM_DB::STATUS_PUBLISHED === $t['status'];
 		?>
-		<article class="tbttm-card" data-tbttm-card data-id="<?php echo esc_attr( $t['id'] ); ?>" data-attempts="<?php echo esc_attr( $t['attempts'] ); ?>">
-			<h3 class="tbttm-card__title"><?php echo esc_html( $t['title'] ); ?></h3>
-			<div class="tbttm-card__meta">
-				<span class="tbttm-status <?php echo $published ? 'tbttm-status--published' : 'tbttm-status--draft'; ?>">
-					<?php echo $published ? esc_html__( 'Published', 'tbt-test-maker' ) : esc_html__( 'Draft', 'tbt-test-maker' ); ?>
-				</span>
-				<span>
-					<?php
-					/* translators: %d: number of questions. */
-					echo esc_html( sprintf( _n( '%d question', '%d questions', $t['questions'], 'tbt-test-maker' ), $t['questions'] ) );
-					?>
-				</span>
-				<?php if ( $published ) : ?>
+		<article class="tbttm-test-row" data-tbttm-card data-id="<?php echo esc_attr( $t['id'] ); ?>" data-attempts="<?php echo esc_attr( $t['attempts'] ); ?>"
+			data-title="<?php echo esc_attr( $t['title'] ); ?>" data-slug="<?php echo esc_attr( $t['slug'] ); ?>" data-url="<?php echo esc_attr( $t['url'] ); ?>" data-status="<?php echo esc_attr( $t['status'] ); ?>">
+			<div class="tbttm-test-row__main">
+				<h3 class="tbttm-test-row__title"><?php echo esc_html( $t['title'] ); ?></h3>
+				<p class="tbttm-test-row__meta">
+					<span class="tbttm-badge <?php echo $published ? 'tbttm-badge--published' : 'tbttm-badge--draft'; ?>">
+						<?php echo $published ? esc_html__( 'Published', 'tbt-test-maker' ) : esc_html__( 'Draft', 'tbt-test-maker' ); ?>
+					</span>
 					<span>
 						<?php
-						/* translators: %d: number of finished attempts. */
-						echo esc_html( sprintf( _n( '%d attempt', '%d attempts', $t['attempts'], 'tbt-test-maker' ), $t['attempts'] ) );
+						/* translators: %d: number of questions. */
+						echo esc_html( sprintf( _n( '%d question', '%d questions', $t['questions'], 'tbt-test-maker' ), $t['questions'] ) );
 						?>
 					</span>
-				<?php endif; ?>
+					<?php if ( $published ) : ?>
+						<span>
+							<?php
+							/* translators: %d: number of finished attempts. */
+							echo esc_html( sprintf( _n( '%d attempt', '%d attempts', $t['attempts'], 'tbt-test-maker' ), $t['attempts'] ) );
+							?>
+						</span>
+					<?php endif; ?>
+					<?php if ( '' !== $t['edited'] ) : ?>
+						<span>
+							<?php
+							/* translators: %s: a date. */
+							echo esc_html( sprintf( __( 'Edited %s', 'tbt-test-maker' ), $t['edited'] ) );
+							?>
+						</span>
+					<?php endif; ?>
+				</p>
 			</div>
-			<div class="tbttm-card__actions" data-tbttm-actions>
-				<a class="tbttm-btn tbttm-btn--small" href="<?php echo esc_url( $t['edit_url'] ); ?>"><?php esc_html_e( 'Edit', 'tbt-test-maker' ); ?></a>
+			<div class="tbttm-test-row__actions" data-tbttm-actions>
 				<?php if ( $published && '' !== $t['url'] ) : ?>
-					<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-tbttm-copy="<?php echo esc_attr( $t['url'] ); ?>"><?php esc_html_e( 'Copy link', 'tbt-test-maker' ); ?></button>
+					<a class="tbttm-rowbtn" href="<?php echo esc_url( $t['url'] ); ?>" target="_blank" rel="noopener"
+						aria-label="<?php echo esc_attr( sprintf( /* translators: %s: test title. */ __( 'Open %s in a new tab', 'tbt-test-maker' ), $t['title'] ) ); ?>"><?php esc_html_e( 'Open', 'tbt-test-maker' ); ?></a>
 				<?php endif; ?>
-				<span class="tbttm-spacer"></span>
-				<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-tbttm-delete><?php esc_html_e( 'Delete', 'tbt-test-maker' ); ?></button>
+				<a class="tbttm-rowbtn" href="<?php echo esc_url( $t['edit_url'] ); ?>"><?php esc_html_e( 'Edit', 'tbt-test-maker' ); ?></a>
+				<button type="button" class="tbttm-rowbtn" data-tbttm-share aria-expanded="false"><?php esc_html_e( 'Share', 'tbt-test-maker' ); ?></button>
+				<button type="button" class="tbttm-rowbtn" data-tbttm-duplicate><?php esc_html_e( 'Duplicate', 'tbt-test-maker' ); ?></button>
+				<button type="button" class="tbttm-rowbtn tbttm-rowbtn--danger" data-tbttm-delete><?php esc_html_e( 'Delete', 'tbt-test-maker' ); ?></button>
 			</div>
+			<div class="tbttm-test-row__share" data-tbttm-share-panel hidden></div>
 		</article>
 		<?php
 	}
