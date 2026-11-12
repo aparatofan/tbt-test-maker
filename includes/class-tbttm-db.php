@@ -396,6 +396,63 @@ class TBTTM_DB {
 	}
 
 	/**
+	 * Copy a test and its questions as a new draft: "Title (copy)", a new
+	 * slug, no attempts. The questions are copied as stored.
+	 *
+	 * @param object $row      Test row to copy.
+	 * @param int    $owner_id Owner of the copy.
+	 * @return int New test ID, or 0 on failure.
+	 */
+	public static function duplicate_test( $row, $owner_id ) {
+		global $wpdb;
+		$now = self::now();
+		/* translators: %s: the original test's title. */
+		$title = sprintf( __( '%s (copy)', 'tbt-test-maker' ), (string) $row->title );
+		if ( mb_strlen( $title, 'UTF-8' ) > TBTTM_Validator::TITLE_MAX ) {
+			$title = mb_substr( $title, 0, TBTTM_Validator::TITLE_MAX, 'UTF-8' );
+		}
+
+		$ok = $wpdb->insert(
+			self::tests_table(),
+			array(
+				'slug'       => self::unique_slug(),
+				'owner_id'   => (int) $owner_id,
+				'title'      => $title,
+				'intro'      => (string) $row->intro,
+				'image_id'   => (int) $row->image_id,
+				'status'     => self::STATUS_DRAFT,
+				'feedback'   => (string) $row->feedback,
+				'bulls'      => (int) $row->bulls,
+				'pass_mark'  => null === $row->pass_mark ? null : (int) $row->pass_mark,
+				'created_at' => $now,
+				'updated_at' => $now,
+			)
+		);
+		if ( false === $ok ) {
+			return 0;
+		}
+		$id = (int) $wpdb->insert_id;
+
+		$table = self::questions_table();
+		$rows  = (array) $wpdb->get_results(
+			$wpdb->prepare( "SELECT position, type, body, data FROM {$table} WHERE test_id = %d ORDER BY position ASC, id ASC", (int) $row->id )
+		);
+		foreach ( $rows as $q ) {
+			$wpdb->insert(
+				$table,
+				array(
+					'test_id'  => $id,
+					'position' => (int) $q->position,
+					'type'     => (string) $q->type,
+					'body'     => (string) $q->body,
+					'data'     => (string) $q->data,
+				)
+			);
+		}
+		return $id;
+	}
+
+	/**
 	 * Delete a test, its questions and its attempts.
 	 *
 	 * @param int $id Test ID.

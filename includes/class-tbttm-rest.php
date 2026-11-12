@@ -75,6 +75,16 @@ class TBTTM_Rest {
 
 		register_rest_route(
 			self::NS,
+			'/tests/(?P<id>\d+)/duplicate',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'permission_callback' => $teacher,
+				'callback'            => array( $this, 'duplicate_test' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/attempts',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
@@ -156,7 +166,21 @@ class TBTTM_Rest {
 			'attempts'  => (int) $row->attempt_count,
 			'url'       => TBTTM_DB::STATUS_PUBLISHED === $row->status ? TBTTM_Urls::test_url( $row->slug ) : '',
 			'edit_url'  => TBTTM_Urls::edit_url( (int) $row->id ),
+			'edited'    => self::edited( (string) $row->updated_at ),
 		);
+	}
+
+	/**
+	 * "5 Nov 2026": a stored UTC time as a date in the site's time zone.
+	 *
+	 * @param string $gmt MySQL datetime, UTC.
+	 * @return string
+	 */
+	public static function edited( $gmt ) {
+		if ( '' === $gmt || 0 === strpos( $gmt, '0000' ) ) {
+			return '';
+		}
+		return (string) mysql2date( 'j M Y', get_date_from_gmt( $gmt ) );
 	}
 
 	/**
@@ -288,6 +312,29 @@ class TBTTM_Rest {
 
 		$row = TBTTM_DB::get_owned_test( (int) $row->id, $user_id );
 		return rest_ensure_response( self::test_payload( $row, TBTTM_DB::get_questions( (int) $row->id ) ) );
+	}
+
+	/**
+	 * Copy a test, with its questions, as a draft owned by the current user,
+	 * as the Matching Game's Duplicate does. Attempts are not copied.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function duplicate_test( WP_REST_Request $request ) {
+		$user_id = get_current_user_id();
+		$row     = TBTTM_DB::get_owned_test( (int) $request['id'], $user_id );
+		if ( ! $row ) {
+			return self::not_found();
+		}
+		$id = TBTTM_DB::duplicate_test( $row, $user_id );
+		if ( ! $id ) {
+			return new WP_Error( 'tbttm_save_failed', __( 'The copy could not be made. Try again.', 'tbt-test-maker' ), array( 'status' => 500 ) );
+		}
+		$copy                 = TBTTM_DB::get_owned_test( $id, $user_id );
+		$copy->question_count = count( TBTTM_DB::get_questions( $id ) );
+		$copy->attempt_count  = 0;
+		return rest_ensure_response( self::test_summary( $copy ) );
 	}
 
 	public function delete_test( WP_REST_Request $request ) {

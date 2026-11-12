@@ -115,20 +115,93 @@
 	 * Library
 	 * ------------------------------------------------------------------- */
 
-	/** One card. Keep in step with TBTTM_Teacher::render_card(). */
-	function cardHtml( t ) {
+	/**
+	 * The share panel, used by the builder's Share stage and by a library
+	 * row's SHARE button: the QR code beside the student link (Translation
+	 * Drill), and the shortcode that puts the test in a lesson (Matching Game).
+	 *
+	 * @param {{slug:string,url:string}} t   Test.
+	 * @param {string}                   uid Suffix that keeps the field IDs unique.
+	 */
+	function shareBodyHtml( t, uid ) {
+		var code = '[tbt_test test="' + t.slug + '"]';
+		var html = '<div class="tbttm-share">';
+		if ( t.url ) {
+			html += '<figure class="tbttm-qr" data-tbttm-qr="' + esc( t.url ) + '" aria-label="QR code for the student link"></figure>';
+		}
+		html += '<div class="tbttm-share__body">';
+		if ( t.url ) {
+			html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-url-' + uid + '">Student link</label>'
+				+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-url-' + uid + '" type="text" readonly value="' + esc( t.url ) + '">'
+				+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( t.url ) + '" data-label="Copy link">Copy link</button>'
+				+ '<a class="tbttm-btn tbttm-btn--ghost" href="' + esc( t.url ) + '" target="_blank" rel="noopener">Open</a></div>'
+				+ '<span class="tbttm-hint">Students log in to TBT to open it. The link stays the same when you edit the test later.</span></div>';
+		} else {
+			html += '<p class="tbttm-note">No student page is set yet, so the test has no link. An administrator can choose it in Test Maker Settings. The shortcode below works already.</p>';
+		}
+		html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-code-' + uid + '">Put it in a lesson</label>'
+			+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-code-' + uid + '" type="text" readonly value="' + esc( code ) + '">'
+			+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( code ) + '" data-label="Copy shortcode">Copy shortcode</button></div>'
+			+ '<span class="tbttm-hint">Paste it into any page or post, such as a lesson in Divi, and the test appears there.</span></div>';
+		return html + '</div></div>';
+	}
+
+	/** Draw every QR code inside a container, with the token colours. */
+	function drawQrs( container ) {
+		container.querySelectorAll( '[data-tbttm-qr]' ).forEach( function ( target ) {
+			var url = target.getAttribute( 'data-tbttm-qr' );
+			target.innerHTML = '';
+			if ( ! url || typeof window.QRCode === 'undefined' ) {
+				target.hidden = true;
+				return;
+			}
+			var css = window.getComputedStyle( target );
+			var opts = { text: url, width: 176, height: 176, correctLevel: window.QRCode.CorrectLevel.M };
+			var dark = css.getPropertyValue( '--tbt-ink' ).trim();
+			var light = css.getPropertyValue( '--tbt-surface' ).trim();
+			if ( dark && light ) {
+				opts.colorDark = dark;
+				opts.colorLight = light;
+			}
+			/* eslint-disable-next-line no-new */
+			new window.QRCode( target, opts );
+		} );
+	}
+
+	/** A Copy button: copy its data-copy, read "Copied" for a moment. */
+	function copyButton( b ) {
+		copyText( b.dataset.copy ).then( function () {
+			b.textContent = 'Copied';
+		}, function () {
+			var field = b.parentNode.querySelector( 'input' );
+			if ( field ) {
+				field.select();
+			}
+		} ).then( function () {
+			setTimeout( function () { b.textContent = b.dataset.label; }, 1600 );
+		} );
+	}
+
+	/**
+	 * One library row, in the Matching Game's layout. Keep in step with
+	 * TBTTM_Teacher::render_row().
+	 */
+	function rowHtml( t ) {
 		var pub = t.status === 'published';
-		return '<article class="tbttm-card" data-tbttm-card data-id="' + t.id + '" data-attempts="' + t.attempts + '">'
-			+ '<h3 class="tbttm-card__title">' + esc( t.title ) + '</h3>'
-			+ '<div class="tbttm-card__meta"><span class="tbttm-status ' + ( pub ? 'tbttm-status--published' : 'tbttm-status--draft' ) + '">' + ( pub ? 'Published' : 'Draft' ) + '</span>'
+		return '<article class="tbttm-test-row" data-tbttm-card data-id="' + t.id + '" data-attempts="' + t.attempts + '"'
+			+ ' data-title="' + esc( t.title ) + '" data-slug="' + esc( t.slug ) + '" data-url="' + esc( t.url ) + '" data-status="' + esc( t.status ) + '">'
+			+ '<div class="tbttm-test-row__main"><h3 class="tbttm-test-row__title">' + esc( t.title ) + '</h3>'
+			+ '<p class="tbttm-test-row__meta"><span class="tbttm-badge ' + ( pub ? 'tbttm-badge--published' : 'tbttm-badge--draft' ) + '">' + ( pub ? 'Published' : 'Draft' ) + '</span>'
 			+ '<span>' + plural( t.questions, 'question', 'questions' ) + '</span>'
-			+ ( pub ? '<span>' + plural( t.attempts, 'attempt', 'attempts' ) + '</span>' : '' ) + '</div>'
-			+ '<div class="tbttm-card__actions" data-tbttm-actions>'
-			+ '<a class="tbttm-btn tbttm-btn--small" href="' + esc( t.edit_url ) + '">Edit</a>'
-			+ ( pub && t.url ? '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-tbttm-copy="' + esc( t.url ) + '">Copy link</button>' : '' )
-			+ '<span class="tbttm-spacer"></span>'
-			+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-tbttm-delete>Delete</button>'
-			+ '</div></article>';
+			+ ( pub ? '<span>' + plural( t.attempts, 'attempt', 'attempts' ) + '</span>' : '' )
+			+ ( t.edited ? '<span>Edited ' + esc( t.edited ) + '</span>' : '' ) + '</p></div>'
+			+ '<div class="tbttm-test-row__actions" data-tbttm-actions>'
+			+ ( pub && t.url ? '<a class="tbttm-rowbtn" href="' + esc( t.url ) + '" target="_blank" rel="noopener" aria-label="Open ' + esc( t.title ) + ' in a new tab">Open</a>' : '' )
+			+ '<a class="tbttm-rowbtn" href="' + esc( t.edit_url ) + '">Edit</a>'
+			+ '<button type="button" class="tbttm-rowbtn" data-tbttm-share aria-expanded="false">Share</button>'
+			+ '<button type="button" class="tbttm-rowbtn" data-tbttm-duplicate>Duplicate</button>'
+			+ '<button type="button" class="tbttm-rowbtn tbttm-rowbtn--danger" data-tbttm-delete>Delete</button>'
+			+ '</div><div class="tbttm-test-row__share" data-tbttm-share-panel hidden></div></article>';
 	}
 
 	function Library( root ) {
@@ -137,6 +210,7 @@
 		var grid = root.querySelector( '[data-tbttm-grid]' );
 		var summary = root.querySelector( '[data-tbttm-summary]' );
 		var nomatch = root.querySelector( '[data-tbttm-nomatch]' );
+		var notice = root.querySelector( '[data-tbttm-notice]' );
 		var total = +root.dataset.total || 0;
 		var timer = null;
 		var seq = 0;
@@ -149,7 +223,7 @@
 					return;
 				}
 				total = res.total;
-				grid.innerHTML = res.tests.map( cardHtml ).join( '' );
+				grid.innerHTML = res.tests.map( rowHtml ).join( '' );
 				if ( term ) {
 					summary.innerHTML = res.tests.length + ' of ' + plural( total, 'test', 'tests' )
 						+ ' · <button type="button" class="tbttm-linkbtn" data-tbttm-clear>Clear filters</button>';
@@ -165,6 +239,15 @@
 				summary.textContent = err.message;
 				summary.hidden = false;
 			} );
+		}
+
+		function notify( text, isError ) {
+			if ( ! notice ) {
+				return;
+			}
+			notice.textContent = text;
+			notice.className = 'tbttm-note tbttm-library__notice ' + ( isError ? 'tbttm-note--error' : 'tbttm-note--ok' );
+			notice.hidden = false;
 		}
 
 		function onInput() {
@@ -212,7 +295,7 @@
 
 		root.addEventListener( 'click', function ( e ) {
 			var b = e.target.closest( 'button' );
-			if ( ! b || ! root.contains( b ) ) {
+			if ( ! b || ! root.contains( b ) || b.disabled ) {
 				return;
 			}
 			var card = b.closest( '[data-tbttm-card]' );
@@ -222,14 +305,37 @@
 				return;
 			}
 
-			if ( b.hasAttribute( 'data-tbttm-copy' ) ) {
-				var label = b.textContent;
-				copyText( b.getAttribute( 'data-tbttm-copy' ) ).then( function () {
-					b.textContent = 'Link copied';
-				}, function () {
-					b.textContent = 'Copy failed';
-				} ).then( function () {
-					setTimeout( function () { b.textContent = label; }, 1600 );
+			if ( b.dataset.act === 'copy' ) {
+				copyButton( b );
+				return;
+			}
+
+			// SHARE: the panel unfolds under the row, built on first open.
+			if ( b.hasAttribute( 'data-tbttm-share' ) && card ) {
+				var panel = card.querySelector( '[data-tbttm-share-panel]' );
+				var opening = panel.hidden;
+				if ( opening && ! panel.firstChild ) {
+					if ( card.dataset.status === 'published' ) {
+						panel.innerHTML = shareBodyHtml( { slug: card.dataset.slug, url: card.dataset.url }, 'r' + card.dataset.id );
+						drawQrs( panel );
+					} else {
+						panel.innerHTML = '<p class="tbttm-muted">This test is a draft, so it has no link yet. Publish it to share it with your students.</p>';
+					}
+				}
+				panel.hidden = ! opening;
+				b.setAttribute( 'aria-expanded', opening ? 'true' : 'false' );
+				return;
+			}
+
+			// DUPLICATE: a draft copy, as in the Matching Game.
+			if ( b.hasAttribute( 'data-tbttm-duplicate' ) && card ) {
+				b.disabled = true;
+				api( 'POST', 'tests/' + card.dataset.id + '/duplicate' ).then( function () {
+					notify( 'A draft copy was created.' );
+					runSearch();
+				}, function ( err ) {
+					b.disabled = false;
+					notify( err.message, true );
 				} );
 				return;
 			}
@@ -242,9 +348,9 @@
 				confirm.className = 'tbttm-confirm';
 				confirm.setAttribute( 'data-tbttm-confirm', '' );
 				confirm.innerHTML = '<span>Delete this test' + ( n ? ' and its ' + plural( n, 'result', 'results' ) : '' ) + '?</span>'
-					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-tbttm-delete-yes>Delete test</button>'
-					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-tbttm-delete-no>Cancel</button>';
-				card.appendChild( confirm );
+					+ '<button type="button" class="tbttm-rowbtn tbttm-rowbtn--danger-solid" data-tbttm-delete-yes>Delete test</button>'
+					+ '<button type="button" class="tbttm-rowbtn" data-tbttm-delete-no>Cancel</button>';
+				actions.parentNode.insertBefore( confirm, actions.nextSibling );
 				confirm.querySelector( '[data-tbttm-delete-no]' ).focus();
 				return;
 			}
@@ -439,12 +545,7 @@
 			return html;
 		}
 
-		/**
-		 * The share section, as in the other teacher tools: the QR code and
-		 * the student link (Translation Drill), and the shortcode that embeds
-		 * the test in a lesson page (Matching Game). A draft has nothing to
-		 * share yet.
-		 */
+		/** The builder's Share stage card. A draft has nothing to share yet. */
 		function shareHtml() {
 			var html = '<section class="tbttm-stage" id="tbttm-share"><h2 class="tbttm-stage__title">Share</h2>';
 			if ( d.status !== 'published' || ! d.slug ) {
@@ -452,48 +553,7 @@
 					? 'This test is a draft, so it has no link yet. Publish it to share it with your students.'
 					: 'Save and publish the test to share it with your students.' ) + '</p></section>';
 			}
-			var code = '[tbt_test test="' + d.slug + '"]';
-			html += '<div class="tbttm-share">';
-			if ( d.url ) {
-				html += '<figure class="tbttm-qr" data-tbttm-qr aria-label="QR code for the student link"></figure>';
-			}
-			html += '<div class="tbttm-share__body">';
-			if ( d.url ) {
-				html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-url">Student link</label>'
-					+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-url" type="text" readonly value="' + esc( d.url ) + '">'
-					+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( d.url ) + '" data-label="Copy link">Copy link</button>'
-					+ '<a class="tbttm-btn tbttm-btn--ghost" href="' + esc( d.url ) + '" target="_blank" rel="noopener">Open</a></div>'
-					+ '<span class="tbttm-hint">Students log in to TBT to open it. The link stays the same when you edit the test later.</span></div>';
-			} else {
-				html += '<p class="tbttm-note">No student page is set yet, so the test has no link. An administrator can choose it in Test Maker Settings. The shortcode below works already.</p>';
-			}
-			html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-share-code">Put it in a lesson</label>'
-				+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-code" type="text" readonly value="' + esc( code ) + '">'
-				+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( code ) + '" data-label="Copy shortcode">Copy shortcode</button></div>'
-				+ '<span class="tbttm-hint">Paste it into any page or post, such as a lesson in Divi, and the test appears there.</span></div>';
-			return html + '</div></div></section>';
-		}
-
-		/** Draw the QR code with the token colours, as Translation Drill does. */
-		function drawQr( target, url ) {
-			if ( ! target ) {
-				return;
-			}
-			target.innerHTML = '';
-			if ( ! url || typeof window.QRCode === 'undefined' ) {
-				target.hidden = true;
-				return;
-			}
-			var css = window.getComputedStyle( root );
-			var opts = { text: url, width: 176, height: 176, correctLevel: window.QRCode.CorrectLevel.M };
-			var dark = css.getPropertyValue( '--tbt-ink' ).trim();
-			var light = css.getPropertyValue( '--tbt-surface' ).trim();
-			if ( dark && light ) {
-				opts.colorDark = dark;
-				opts.colorLight = light;
-			}
-			/* eslint-disable-next-line no-new */
-			new window.QRCode( target, opts );
+			return html + shareBodyHtml( d, 'b' ) + '</section>';
 		}
 
 		function render( focusId ) {
@@ -557,7 +617,7 @@
 				+ '</div>';
 
 			root.innerHTML = html;
-			drawQr( root.querySelector( '[data-tbttm-qr]' ), pub ? d.url : '' );
+			drawQrs( root );
 			if ( focusId ) {
 				var el = document.getElementById( focusId );
 				if ( el ) {
@@ -924,16 +984,7 @@
 					return;
 				}
 				case 'copy':
-					copyText( b.dataset.copy ).then( function () {
-						b.textContent = 'Copied';
-					}, function () {
-						var field = b.parentNode.querySelector( 'input' );
-						if ( field ) {
-							field.select();
-						}
-					} ).then( function () {
-						setTimeout( function () { b.textContent = b.dataset.label; }, 1600 );
-					} );
+					copyButton( b );
 					return;
 				case 'imp-add':
 					addImported();
