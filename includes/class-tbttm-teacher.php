@@ -68,6 +68,7 @@ class TBTTM_Teacher {
 				'nonce'      => wp_create_nonce( 'wp_rest' ),
 				'ajax'       => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
 				'libraryUrl' => esc_url_raw( TBTTM_Urls::library_url() ),
+				'newUrl'     => esc_url_raw( TBTTM_Urls::new_url() ),
 				'editParam'  => TBTTM_Urls::EDIT_PARAM,
 				'newParam'   => TBTTM_Urls::NEW_PARAM,
 				'maxQuestions' => TBTTM_Validator::QUESTIONS_MAX,

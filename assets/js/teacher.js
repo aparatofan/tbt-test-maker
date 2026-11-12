@@ -555,6 +555,20 @@
 				+ ( sub ? '<p class="tbttm-stage__sub">' + sub + '</p>' : '' ) + '</div>';
 		}
 
+		/**
+		 * "Create another test": the TBT generator rule, as in Swipe and
+		 * Translation Drill. Starting the next test ends the whole flow rather
+		 * than the Share stage, so the button sits centred under the stages,
+		 * outside any card, once the test is published and shareable.
+		 * Unsaved changes still raise the browser's own "leave site?" prompt.
+		 */
+		function anotherHtml() {
+			if ( d.status !== 'published' || ! CFG.newUrl ) {
+				return '';
+			}
+			return '<div class="tbttm-another"><a class="tbttm-btn tbttm-btn--primary" href="' + esc( CFG.newUrl ) + '">Create another test</a></div>';
+		}
+
 		/** The builder's Share stage card. A draft has nothing to share yet. */
 		function shareHtml() {
 			var html = '<section class="tbttm-stage tbttm-stage--numbered" id="tbttm-share">'
@@ -631,6 +645,7 @@
 				+ '<button type="button" class="tbttm-btn tbttm-btn--primary" data-act="publish"' + ( saving ? ' disabled' : '' ) + '>' + ( pub ? 'Save changes' : 'Publish test' ) + '</button>'
 				+ '</div>'
 				+ shareHtml()
+				+ anotherHtml()
 				+ '</div>';
 
 			root.innerHTML = html;
