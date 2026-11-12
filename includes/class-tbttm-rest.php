@@ -19,6 +19,18 @@ class TBTTM_Rest {
 
 	const NS = 'tbttm/v1';
 
+	/** Feature image upload: the largest file accepted, in bytes. */
+	const IMAGE_MAX_BYTES = 5242880; // 5 MB.
+
+	/** Feature image: the longest side after resizing, in pixels. */
+	const IMAGE_MAX_SIDE = 1600;
+
+	/** Feature image: refuse anything larger before decoding it (40 megapixels). */
+	const IMAGE_MAX_PIXELS = 40000000;
+
+	/** Feature image uploads one teacher may make in a day. */
+	const IMAGE_DAILY_LIMIT = 50;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
@@ -80,6 +92,16 @@ class TBTTM_Rest {
 				'methods'             => WP_REST_Server::CREATABLE,
 				'permission_callback' => $teacher,
 				'callback'            => array( $this, 'duplicate_test' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/images',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'permission_callback' => $teacher,
+				'callback'            => array( $this, 'upload_image' ),
 			)
 		);
 
@@ -384,11 +406,168 @@ class TBTTM_Rest {
 			}
 		}
 
-		// The feature image must be an image in the media library.
-		if ( $clean['image_id'] > 0 && ! wp_attachment_is_image( $clean['image_id'] ) ) {
+		// The feature image must be an image the teacher uploaded, or one they
+		// may edit anyway (an administrator's pick from the media library).
+		if ( $clean['image_id'] > 0 && ! self::can_use_image( $clean['image_id'] ) ) {
 			$clean['image_id'] = 0;
 		}
 		return $clean;
+	}
+
+	/**
+	 * May the current user put this attachment on a test?
+	 *
+	 * @param int $id Attachment ID.
+	 * @return bool
+	 */
+	private static function can_use_image( $id ) {
+		$post = get_post( (int) $id );
+		if ( ! $post || 'attachment' !== $post->post_type || ! wp_attachment_is_image( $post ) ) {
+			return false;
+		}
+		return (int) $post->post_author === get_current_user_id() || current_user_can( 'edit_post', $post->ID );
+	}
+
+	/**
+	 * Upload a feature image.
+	 *
+	 * Teachers need not hold WordPress's upload_files capability: this route
+	 * accepts one thing only, a picture for a test, and makes it safe itself.
+	 *   - JPEG, PNG or WebP only, judged by the file's content, not its name.
+	 *     SVG, GIF, HEIC and everything else are refused.
+	 *   - At most 5 MB, and at most 40 megapixels before it is decoded.
+	 *   - Re-encoded through WordPress's image editor, never stored as sent:
+	 *     resized to 1600px on the longest side, and stripped of its metadata
+	 *     (camera, location) along the way.
+	 *   - At most 50 uploads per teacher per day.
+	 * The result is an ordinary attachment owned by the teacher.
+	 *
+	 * @param WP_REST_Request $request Request with the file in `image`.
+	 * @return WP_REST_Response|WP_Error { id, url }
+	 */
+	public function upload_image( WP_REST_Request $request ) {
+		$files = $request->get_file_params();
+		$file  = isset( $files['image'] ) && is_array( $files['image'] ) ? $files['image'] : null;
+
+		if ( ! $file || ! empty( $file['error'] ) || empty( $file['tmp_name'] ) || ! is_uploaded_file( $file['tmp_name'] ) ) {
+			$too_big = $file && in_array( (int) ( $file['error'] ?? 0 ), array( UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ), true );
+			return self::image_error( $too_big ? 'big' : 'none' );
+		}
+		if ( (int) $file['size'] > self::IMAGE_MAX_BYTES || filesize( $file['tmp_name'] ) > self::IMAGE_MAX_BYTES ) {
+			return self::image_error( 'big' );
+		}
+
+		$user_id = get_current_user_id();
+		$key     = 'tbttm_uploads_' . $user_id . '_' . gmdate( 'Ymd' );
+		$count   = (int) get_transient( $key );
+		if ( $count >= self::IMAGE_DAILY_LIMIT ) {
+			return self::image_error( 'limit' );
+		}
+
+		$allowed = array(
+			'jpg|jpeg|jpe' => 'image/jpeg',
+			'png'          => 'image/png',
+			'webp'         => 'image/webp',
+		);
+		$name  = sanitize_file_name( (string) $file['name'] );
+		$check = wp_check_filetype_and_ext( $file['tmp_name'], $name, $allowed );
+		$info  = @getimagesize( $file['tmp_name'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		$mime  = is_array( $info ) && isset( $info['mime'] ) ? $info['mime'] : '';
+		if ( empty( $check['type'] ) || ! in_array( $mime, $allowed, true ) || $mime !== $check['type'] ) {
+			return self::image_error( 'type' );
+		}
+		if ( (int) $info[0] < 1 || (int) $info[1] < 1 || (int) $info[0] * (int) $info[1] > self::IMAGE_MAX_PIXELS ) {
+			return self::image_error( 'pixels' );
+		}
+
+		$editor = wp_get_image_editor( $file['tmp_name'] );
+		if ( is_wp_error( $editor ) ) {
+			return self::image_error( 'type' );
+		}
+		$size = $editor->get_size();
+		if ( $size['width'] > self::IMAGE_MAX_SIDE || $size['height'] > self::IMAGE_MAX_SIDE ) {
+			$resized = $editor->resize( self::IMAGE_MAX_SIDE, self::IMAGE_MAX_SIDE, false );
+			if ( is_wp_error( $resized ) ) {
+				return self::image_error( 'save' );
+			}
+		}
+		$editor->set_quality( 82 );
+
+		// Keep the format when the editor can write it, otherwise JPEG.
+		$out_mime = $editor::supports_mime_type( $mime ) ? $mime : 'image/jpeg';
+		$ext      = array(
+			'image/jpeg' => 'jpg',
+			'image/png'  => 'png',
+			'image/webp' => 'webp',
+		)[ $out_mime ];
+
+		$uploads = wp_upload_dir();
+		if ( ! empty( $uploads['error'] ) ) {
+			return self::image_error( 'save' );
+		}
+		$base     = sanitize_file_name( pathinfo( $name, PATHINFO_FILENAME ) );
+		$base     = '' !== $base ? substr( $base, 0, 60 ) : 'test-image';
+		$filename = wp_unique_filename( $uploads['path'], $base . '.' . $ext );
+		$saved    = $editor->save( trailingslashit( $uploads['path'] ) . $filename, $out_mime );
+		if ( is_wp_error( $saved ) || empty( $saved['path'] ) ) {
+			return self::image_error( 'save' );
+		}
+
+		$attachment_id = wp_insert_attachment(
+			array(
+				'post_mime_type' => $saved['mime-type'],
+				'post_title'     => $base,
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+				'post_author'    => $user_id,
+			),
+			$saved['path'],
+			0,
+			true
+		);
+		if ( is_wp_error( $attachment_id ) ) {
+			wp_delete_file( $saved['path'] );
+			return self::image_error( 'save' );
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $saved['path'] ) );
+		set_transient( $key, $count + 1, DAY_IN_SECONDS );
+
+		$url = wp_get_attachment_image_url( $attachment_id, 'large' );
+		return rest_ensure_response(
+			array(
+				'id'  => (int) $attachment_id,
+				'url' => $url ? (string) $url : (string) wp_get_attachment_url( $attachment_id ),
+			)
+		);
+	}
+
+	/**
+	 * The teacher-facing reason an upload was refused.
+	 *
+	 * @param string $why none|big|type|pixels|limit|save.
+	 * @return WP_Error
+	 */
+	private static function image_error( $why ) {
+		$messages = array(
+			'none'   => __( 'The picture did not arrive. Try again.', 'tbt-test-maker' ),
+			/* translators: %d: megabytes. */
+			'big'    => sprintf( __( 'The picture is too big. Choose one under %d MB.', 'tbt-test-maker' ), (int) ( self::IMAGE_MAX_BYTES / 1048576 ) ),
+			'type'   => __( 'Use a JPG, PNG or WebP picture.', 'tbt-test-maker' ),
+			'pixels' => __( 'The picture is too large to process. Choose a smaller one.', 'tbt-test-maker' ),
+			'limit'  => __( 'You have uploaded a lot of pictures today. Try again tomorrow.', 'tbt-test-maker' ),
+			'save'   => __( 'The picture could not be saved. Try again.', 'tbt-test-maker' ),
+		);
+		$status   = array(
+			'none'   => 400,
+			'big'    => 413,
+			'type'   => 415,
+			'pixels' => 413,
+			'limit'  => 429,
+			'save'   => 500,
+		);
+		return new WP_Error( 'tbttm_image_' . $why, $messages[ $why ], array( 'status' => $status[ $why ] ) );
 	}
 
 	/* ---------------------------------------------------------------------

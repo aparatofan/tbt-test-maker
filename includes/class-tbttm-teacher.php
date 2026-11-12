@@ -55,11 +55,6 @@ class TBTTM_Teacher {
 
 		self::enqueue_styles();
 
-		if ( self::is_builder() ) {
-			// The feature image picker is the WordPress media library.
-			wp_enqueue_media();
-		}
-
 		wp_enqueue_script( 'tbttm-parse', TBTTM_URL . 'assets/js/parse.js', array(), TBTTM_VERSION, true );
 		// The share section's QR code: the same bundled library Translation
 		// Drill uses (qrcodejs, MIT). Drawn in the browser, no request out.
@@ -76,14 +71,10 @@ class TBTTM_Teacher {
 				'editParam'  => TBTTM_Urls::EDIT_PARAM,
 				'newParam'   => TBTTM_Urls::NEW_PARAM,
 				'maxQuestions' => TBTTM_Validator::QUESTIONS_MAX,
+				'imageMaxBytes' => TBTTM_Rest::IMAGE_MAX_BYTES,
+				'imageMaxSide'  => TBTTM_Rest::IMAGE_MAX_SIDE,
 			)
 		);
-	}
-
-	private static function is_builder() {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only view switch.
-		return isset( $_GET[ TBTTM_Urls::NEW_PARAM ] ) || ! empty( $_GET[ TBTTM_Urls::EDIT_PARAM ] );
-		// phpcs:enable
 	}
 
 	/**
