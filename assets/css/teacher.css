@@ -160,6 +160,24 @@ body {
 	outline: none;
 }
 
+/* The class filter, beside the search as in Translation Drill. A chosen
+   class reads as a selection: blue border, pale blue surface. */
+.tbttm .tbttm-select.tbttm-libbar__class {
+	flex: 0 0 240px;
+	width: 240px;
+	min-width: 0;
+	height: auto;
+	padding-top: 13px;
+	padding-bottom: 13px;
+	border-width: 1.5px;
+	line-height: 1.4;
+}
+
+.tbttm .tbttm-select.tbttm-libbar__class.is-set {
+	border-color: var(--tbt-blue);
+	background-color: var(--tbt-selected-bg);
+}
+
 /* The one pill on the library: fixed 250 × 53, uppercase Roboto 16/600 with
    0.08em tracking, no shadow at rest or on hover; the focus ring stays. */
 .tbttm .tbttm-btn.tbttm-libbar__cta {
@@ -208,6 +226,18 @@ body {
 	.tbttm .tbttm-libbar__search {
 		flex: 1 1 auto;
 		width: auto;
+	}
+}
+
+@media (max-width: 640px) {
+	.tbttm .tbttm-libbar__filter {
+		flex-wrap: wrap;
+	}
+
+	.tbttm .tbttm-libbar__search,
+	.tbttm .tbttm-select.tbttm-libbar__class {
+		flex: 1 1 100%;
+		width: 100%;
 	}
 }
 
@@ -507,6 +537,42 @@ body {
 .tbttm .tbttm-input:focus {
 	border-color: var(--tbt-blue);
 	background: var(--tbt-surface);
+	box-shadow: var(--tbt-focus-ring);
+	outline: none;
+}
+
+/* A select, in the input's shape. The arrow is two gradients in the token
+   blue, so no colour is written here. */
+.tbttm .tbttm-select {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	height: 44px;
+	margin: 0;
+	padding: 0 40px 0 16px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	background-color: var(--tbt-input);
+	background-image:
+		linear-gradient(45deg, transparent 50%, var(--tbt-blue) 50%),
+		linear-gradient(135deg, var(--tbt-blue) 50%, transparent 50%);
+	background-repeat: no-repeat;
+	background-position: right 21px center, right 15px center;
+	background-size: 6px 6px, 6px 6px;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-ui);
+	font-size: 16px;
+	line-height: 1.5;
+	text-overflow: ellipsis;
+	box-shadow: none;
+	cursor: pointer;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.tbttm .tbttm-select:focus {
+	border-color: var(--tbt-blue);
+	background-color: var(--tbt-surface);
 	box-shadow: var(--tbt-focus-ring);
 	outline: none;
 }

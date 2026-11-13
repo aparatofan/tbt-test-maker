@@ -120,7 +120,7 @@
 	 * row's SHARE button: the QR code beside the student link (Translation
 	 * Drill), and the shortcode that puts the test in a lesson (Matching Game).
 	 *
-	 * @param {{slug:string,url:string}} t   Test.
+	 * @param {{slug:string,url:string,access:string}} t Test.
 	 * @param {string}                   uid Suffix that keeps the field IDs unique.
 	 */
 	function shareBodyHtml( t, uid ) {
@@ -135,7 +135,8 @@
 				+ '<div class="tbttm-copyrow"><input class="tbttm-input" id="tbttm-share-url-' + uid + '" type="text" readonly value="' + esc( t.url ) + '">'
 				+ '<button type="button" class="tbttm-btn" data-act="copy" data-copy="' + esc( t.url ) + '" data-label="Copy link">Copy link</button>'
 				+ '<a class="tbttm-btn tbttm-btn--ghost" href="' + esc( t.url ) + '" target="_blank" rel="noopener">Open</a></div>'
-				+ '<span class="tbttm-hint">Students log in to TBT to open it. The link stays the same when you edit the test later.</span></div>';
+				+ ( t.access === 'open' ? '<span class="tbttm-hint">Anyone with this link can take the test.</span>' : '' )
+				+ '<span class="tbttm-hint">' + ( t.access === 'open' ? '' : 'Students log in to TBT to open it. ' ) + 'The link stays the same when you edit the test later.</span></div>';
 		} else {
 			html += '<p class="tbttm-note">No student page is set yet, so the test has no link. An administrator can choose it in Test Maker Settings. The shortcode below works already.</p>';
 		}
@@ -189,10 +190,13 @@
 	function rowHtml( t ) {
 		var pub = t.status === 'published';
 		return '<article class="tbttm-test-row" data-tbttm-card data-id="' + t.id + '" data-attempts="' + t.attempts + '"'
-			+ ' data-title="' + esc( t.title ) + '" data-slug="' + esc( t.slug ) + '" data-url="' + esc( t.url ) + '" data-status="' + esc( t.status ) + '">'
+			+ ' data-title="' + esc( t.title ) + '" data-slug="' + esc( t.slug ) + '" data-url="' + esc( t.url ) + '" data-status="' + esc( t.status ) + '" data-access="' + esc( t.access ) + '">'
 			+ '<div class="tbttm-test-row__main"><h3 class="tbttm-test-row__title">' + esc( t.title ) + '</h3>'
 			+ '<p class="tbttm-test-row__meta"><span class="tbttm-badge ' + ( pub ? 'tbttm-badge--published' : 'tbttm-badge--draft' ) + '">' + ( pub ? 'Published' : 'Draft' ) + '</span>'
 			+ '<span>' + plural( t.questions, 'question', 'questions' ) + '</span>'
+			+ ( CFG.notes ? '<span>' + ( t.class_title ? esc( t.class_title ) : 'Not in a class' ) + '</span>' : '' )
+			+ '<span>' + ( t.access === 'open' ? 'Anyone with the link' : 'Logged-in students' ) + '</span>'
+			+ ( t.pass_mark ? '<span>Pass mark ' + t.pass_mark + '%</span>' : '' )
 			+ ( pub ? '<span>' + plural( t.attempts, 'attempt', 'attempts' ) + '</span>' : '' )
 			+ ( t.edited ? '<span>Edited ' + esc( t.edited ) + '</span>' : '' ) + '</p></div>'
 			+ '<div class="tbttm-test-row__actions" data-tbttm-actions>'
@@ -206,6 +210,7 @@
 
 	function Library( root ) {
 		var input = root.querySelector( '[data-tbttm-search]' );
+		var classSelect = root.querySelector( '[data-tbttm-class]' );
 		var clearBtn = root.querySelector( '[data-tbttm-search-clear]' );
 		var grid = root.querySelector( '[data-tbttm-grid]' );
 		var summary = root.querySelector( '[data-tbttm-summary]' );
@@ -215,23 +220,81 @@
 		var timer = null;
 		var seq = 0;
 
+		/**
+		 * Rebuild the class dropdown from the server's counts, so a delete or
+		 * a copy is reflected at once. A class whose last test went loses its
+		 * entry; with no class left the dropdown goes too.
+		 *
+		 * @return {boolean} False when the chosen class is no longer on offer.
+		 */
+		function paintClasses( res ) {
+			if ( ! classSelect ) {
+				return true;
+			}
+			var chosen = classSelect.value;
+			var html = '<option value="">All classes</option>';
+			( res.classes || [] ).forEach( function ( c ) {
+				html += '<option value="' + c.id + '">' + esc( c.title ) + ' (' + c.count + ')</option>';
+			} );
+			if ( res.unclassed > 0 ) {
+				html += '<option value="none">Not in a class (' + res.unclassed + ')</option>';
+			}
+			classSelect.innerHTML = html;
+			classSelect.hidden = ! ( res.classes && res.classes.length );
+			classSelect.value = chosen;
+			var kept = ! classSelect.hidden && classSelect.value === chosen;
+			if ( ! kept ) {
+				classSelect.value = '';
+			}
+			classSelect.classList.toggle( 'is-set', !! classSelect.value );
+			return kept || ! chosen;
+		}
+
+		/** Keep the class choice in the address, so a reload or a shared link keeps it. */
+		function syncUrl() {
+			if ( ! classSelect || ! CFG.classParam || ! window.history || ! window.history.replaceState ) {
+				return;
+			}
+			try {
+				var url = new URL( window.location.href );
+				if ( classSelect.value ) {
+					url.searchParams.set( CFG.classParam, classSelect.value );
+				} else {
+					url.searchParams.delete( CFG.classParam );
+				}
+				window.history.replaceState( null, '', url.toString() );
+			} catch ( e ) {
+				// The filter still works; only the address is left behind.
+			}
+		}
+
 		function runSearch() {
 			var term = input ? input.value.trim() : '';
+			var cls = classSelect ? classSelect.value : '';
 			var mine = ++seq;
-			api( 'GET', 'tests' + ( CFG.rest.indexOf( '?' ) < 0 ? '?' : '&' ) + 'search=' + encodeURIComponent( term ) ).then( function ( res ) {
+			if ( classSelect ) {
+				classSelect.classList.toggle( 'is-set', !! cls );
+			}
+			syncUrl();
+			api( 'GET', 'tests' + ( CFG.rest.indexOf( '?' ) < 0 ? '?' : '&' ) + 'search=' + encodeURIComponent( term ) + '&class=' + encodeURIComponent( cls ) ).then( function ( res ) {
 				if ( mine !== seq ) {
+					return;
+				}
+				if ( ! paintClasses( res ) ) {
+					// The chosen class has no tests left: show them all again.
+					runSearch();
 					return;
 				}
 				total = res.total;
 				grid.innerHTML = res.tests.map( rowHtml ).join( '' );
-				if ( term ) {
+				if ( term || cls ) {
 					summary.innerHTML = res.tests.length + ' of ' + plural( total, 'test', 'tests' )
 						+ ' · <button type="button" class="tbttm-linkbtn" data-tbttm-clear>Clear filters</button>';
 					summary.hidden = false;
 				} else {
 					summary.hidden = true;
 				}
-				nomatch.hidden = ! ( term && ! res.tests.length );
+				nomatch.hidden = ! ( ( term || cls ) && ! res.tests.length );
 			}, function ( err ) {
 				if ( mine !== seq ) {
 					return;
@@ -258,15 +321,29 @@
 			timer = setTimeout( runSearch, 300 );
 		}
 
-		function clearSearch() {
-			if ( ! input ) {
-				return;
+		/** Clear the search box; with `all`, the class filter too. */
+		function clearSearch( all ) {
+			if ( input ) {
+				input.value = '';
 			}
-			input.value = '';
-			clearBtn.hidden = true;
+			if ( clearBtn ) {
+				clearBtn.hidden = true;
+			}
+			if ( all && classSelect ) {
+				classSelect.value = '';
+			}
 			clearTimeout( timer );
 			runSearch();
-			input.focus();
+			if ( input ) {
+				input.focus();
+			}
+		}
+
+		if ( classSelect ) {
+			classSelect.addEventListener( 'change', function () {
+				clearTimeout( timer );
+				runSearch();
+			} );
 		}
 
 		if ( input ) {
@@ -301,7 +378,8 @@
 			var card = b.closest( '[data-tbttm-card]' );
 
 			if ( b === clearBtn || b.hasAttribute( 'data-tbttm-clear' ) ) {
-				clearSearch();
+				// The × empties the search box; "Clear filters" resets both.
+				clearSearch( b !== clearBtn );
 				return;
 			}
 
@@ -316,7 +394,7 @@
 				var opening = panel.hidden;
 				if ( opening && ! panel.firstChild ) {
 					if ( card.dataset.status === 'published' ) {
-						panel.innerHTML = shareBodyHtml( { slug: card.dataset.slug, url: card.dataset.url }, 'r' + card.dataset.id );
+						panel.innerHTML = shareBodyHtml( { slug: card.dataset.slug, url: card.dataset.url, access: card.dataset.access }, 'r' + card.dataset.id );
 						drawQrs( panel );
 					} else {
 						panel.innerHTML = '<p class="tbttm-muted">This test is a draft, so it has no link yet. Publish it to share it with your students.</p>';
@@ -369,7 +447,10 @@
 					if ( total <= 0 ) {
 						// The server decides the empty state: let it paint it.
 						window.location.href = CFG.libraryUrl || window.location.href;
+						return;
 					}
+					// The counts in the class dropdown and the summary follow.
+					runSearch();
 				}, function ( err ) {
 					b.disabled = false;
 					var box = card.querySelector( '[data-tbttm-confirm]' );
@@ -438,8 +519,19 @@
 			feedback: src ? src.feedback : 'end',
 			bulls: src ? !! src.bulls : true,
 			pass_mark: src && src.pass_mark ? String( src.pass_mark ) : '',
+			access: src && src.access === 'open' ? 'open' : 'login',
+			// What the saved test says: the Share stage describes the link
+			// as it works now, not as the unsaved form would make it.
+			savedAccess: src && src.access === 'open' ? 'open' : 'login',
+			class_id: src && src.class_id ? +src.class_id : 0,
+			lesson_id: src && src.lesson_id ? +src.lesson_id : 0,
 			questions: src ? src.questions.map( mkq ) : [],
 		};
+		// The teacher's own classes, printed by the server. Without TBT Notes,
+		// or without a class, the Class field is not shown and not sent.
+		var CLASSES = Array.isArray( CFG.classes ) ? CFG.classes : [];
+		var lessons = src && Array.isArray( src.lessons ) ? src.lessons : [];
+		var lessonSeq = 0;
 		var openQ = null;
 		var showBad = false;
 		var msg = null;
@@ -578,7 +670,56 @@
 					? 'This test is a draft, so it has no link yet. Publish it to share it with your students.'
 					: 'Save and publish the test to share it with your students.' ) + '</p></section>';
 			}
-			return html + shareBodyHtml( d, 'b' ) + '</section>';
+			return html + shareBodyHtml( { slug: d.slug, url: d.url, access: d.savedAccess }, 'b' ) + '</section>';
+		}
+
+		/**
+		 * The Class field: the teacher's classes A–Z, and once one is chosen
+		 * its lessons, newest first, under "Any lesson".
+		 */
+		function classFieldHtml() {
+			if ( ! CLASSES.length ) {
+				return '';
+			}
+			var html = '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-class">Class</label>'
+				+ '<select class="tbttm-select" id="tbttm-f-class"><option value="0">Not in a class</option>'
+				+ CLASSES.map( function ( c ) {
+					return '<option value="' + c.id + '"' + ( +c.id === d.class_id ? ' selected' : '' ) + '>' + esc( c.title ) + '</option>';
+				} ).join( '' ) + '</select>';
+			if ( d.class_id ) {
+				html += '<label class="tbttm-sr-only" for="tbttm-f-lesson">Lesson</label>'
+					+ '<select class="tbttm-select" id="tbttm-f-lesson"><option value="0">Any lesson</option>'
+					+ lessons.map( function ( l ) {
+						return '<option value="' + l.id + '"' + ( +l.id === d.lesson_id ? ' selected' : '' ) + '>' + esc( l.title ) + '</option>';
+					} ).join( '' ) + '</select>';
+			}
+			return html + '<span class="tbttm-hint">' + ( d.class_id
+				? 'The test shows in this class in TBT Notes, like a Swipe deck or a drill.'
+				: 'Attach the test to a class to show it in TBT Notes.' ) + '</span></div>';
+		}
+
+		/** Choose a class: the lesson is cleared and the new class's lessons are loaded. */
+		function setClass( id ) {
+			var mine = ++lessonSeq;
+			d.class_id = id;
+			d.lesson_id = 0;
+			lessons = [];
+			touch();
+			render( 'tbttm-f-class' );
+			if ( ! id ) {
+				return;
+			}
+			api( 'GET', 'classes/' + id + '/lessons' ).then( function ( list ) {
+				// The teacher picked another class while this was in flight.
+				if ( mine !== lessonSeq ) {
+					return;
+				}
+				lessons = Array.isArray( list ) ? list : [];
+				var a = document.activeElement;
+				render( a && root.contains( a ) && a.id ? a.id : undefined );
+			}, function () {
+				// The class still saves, with "Any lesson".
+			} );
 		}
 
 		function render( focusId ) {
@@ -612,8 +753,14 @@
 
 			// 2. Settings
 			html += '<section class="tbttm-stage tbttm-stage--numbered">'
-				+ stageHead( 2, 'Settings', 'When students see the answers, what counts as a pass, and the bull pictures.' )
+				+ stageHead( 2, 'Settings', 'Who the test is for, when students see the answers, what counts as a pass, and the bull pictures.' )
 				+ '<div class="tbttm-settings">'
+				+ classFieldHtml()
+				+ '<div class="tbttm-field"><span class="tbttm-field__label" id="tbttm-acc-label">Who can take it</span>'
+				+ '<div class="tbttm-seg" role="radiogroup" aria-labelledby="tbttm-acc-label">'
+				+ '<label><input type="radio" name="tbttm-acc" id="tbttm-acc-login" value="login"' + ( d.access === 'login' ? ' checked' : '' ) + '>Logged-in students</label>'
+				+ '<label><input type="radio" name="tbttm-acc" id="tbttm-acc-open" value="open"' + ( d.access === 'open' ? ' checked' : '' ) + '>Anyone with the link</label></div>'
+				+ '<span class="tbttm-hint">' + ( d.access === 'login' ? 'Students log in first. Results are saved under their name.' : 'No login. People type their name before they start.' ) + '</span></div>'
 				+ '<div class="tbttm-field"><span class="tbttm-field__label" id="tbttm-fb-label">Feedback</span>'
 				+ '<div class="tbttm-seg" role="radiogroup" aria-labelledby="tbttm-fb-label">'
 				+ '<label><input type="radio" name="tbttm-fb" id="tbttm-fb-end" value="end"' + ( d.feedback === 'end' ? ' checked' : '' ) + '>At the end</label>'
@@ -661,6 +808,17 @@
 		/* ----- saving ----- */
 
 		function payload( status ) {
+			var body = basePayload( status );
+			// Sent only when the Class field is on the page: a save without
+			// it keeps whatever class the test already has.
+			if ( CLASSES.length ) {
+				body.class_id = d.class_id || 0;
+				body.lesson_id = d.class_id ? d.lesson_id || 0 : 0;
+			}
+			return body;
+		}
+
+		function basePayload( status ) {
 			return {
 				title: d.title,
 				intro: d.intro,
@@ -668,6 +826,7 @@
 				feedback: d.feedback,
 				bulls: d.bulls,
 				pass_mark: d.pass_mark.trim(),
+				access: d.access,
 				status: status,
 				questions: d.questions.map( function ( q ) {
 					return { id: q.id || 0, body: q.body, options: q.options, correct: q.correct };
@@ -731,6 +890,14 @@
 				d.image_id = res.image_id;
 				d.image_url = res.image_url;
 				d.pass_mark = res.pass_mark ? String( res.pass_mark ) : '';
+				d.access = res.access === 'open' ? 'open' : 'login';
+				d.savedAccess = d.access;
+				if ( CLASSES.length ) {
+					lessonSeq++;
+					d.class_id = res.class_id ? +res.class_id : 0;
+					d.lesson_id = res.lesson_id ? +res.lesson_id : 0;
+					lessons = Array.isArray( res.lessons ) ? res.lessons : [];
+				}
 				// The server answers in the same order; take its question IDs
 				// and its cleaned content (published tests lose empty answers).
 				res.questions.forEach( function ( sq, i ) {
@@ -943,6 +1110,21 @@
 				d.feedback = t.value;
 				touch();
 				render( t.id );
+				return;
+			}
+			if ( t.name === 'tbttm-acc' ) {
+				d.access = t.value === 'open' ? 'open' : 'login';
+				touch();
+				render( t.id );
+				return;
+			}
+			if ( t.id === 'tbttm-f-class' ) {
+				setClass( +t.value || 0 );
+				return;
+			}
+			if ( t.id === 'tbttm-f-lesson' ) {
+				d.lesson_id = +t.value || 0;
+				touch();
 				return;
 			}
 			if ( t.id === 'tbttm-f-bulls' ) {
