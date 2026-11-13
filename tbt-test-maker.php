@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       TBT Test Maker
  * Description:       Tests for The Blue Tree, with multiple choice and fill-in-the-gaps questions. Teachers build a test or import its questions from Excel, and can attach it to a TBT Notes class. A test is for logged-in students or open to anyone with the link; either way it is taken one question at a time, with every answer saved as it is given, and the result shown at the end, in points: one per multiple choice question, one per gap. A test can give a PDF certificate and email the student their result. Scoring happens on the server.
- * Version:           0.5.1
+ * Version:           0.6.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            TBT
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBTTM_VERSION', '0.5.1' );
+define( 'TBTTM_VERSION', '0.6.0' );
 define( 'TBTTM_DB_VERSION', '1.0' );
 define( 'TBTTM_PLUGIN_FILE', __FILE__ );
 define( 'TBTTM_DIR', plugin_dir_path( __FILE__ ) );
