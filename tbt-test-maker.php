@@ -25,6 +25,7 @@ define( 'TBTTM_URL', plugin_dir_url( __FILE__ ) );
 define( 'TBTTM_CAP', 'tbttm_manage' );
 
 require_once TBTTM_DIR . 'includes/class-tbttm-capabilities.php';
+require_once TBTTM_DIR . 'includes/class-tbttm-gaps.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-db.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-urls.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-assets.php';

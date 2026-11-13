@@ -397,16 +397,21 @@ class TBTTM_DB {
 		$kept   = array();
 
 		foreach ( array_values( $questions ) as $position => $q ) {
+			$is_gap  = isset( $q['type'] ) && 'gap' === $q['type'];
 			$columns = array(
 				'test_id'  => (int) $test_id,
 				'position' => (int) $position,
-				'type'     => 'choice',
+				'type'     => $is_gap ? 'gap' : 'choice',
 				'body'     => (string) $q['body'],
+				// A gap question's answers live in its body; `gaps` is read
+				// from it on every save.
 				'data'     => wp_json_encode(
-					array(
-						'options' => array_values( array_map( 'strval', $q['options'] ) ),
-						'correct' => null === $q['correct'] ? null : (int) $q['correct'],
-					)
+					$is_gap
+						? array( 'gaps' => TBTTM_Gaps::parse( (string) $q['body'] ) )
+						: array(
+							'options' => array_values( array_map( 'strval', $q['options'] ) ),
+							'correct' => null === $q['correct'] ? null : (int) $q['correct'],
+						)
 				),
 			);
 
@@ -525,7 +530,11 @@ class TBTTM_DB {
 	 * A test's questions in order, decoded.
 	 *
 	 * @param int $test_id Test ID.
-	 * @return array[] Each: id, body, options, correct (int|null).
+	 * @return array[] Each: id, type ('choice' or 'gap'), body, options,
+	 *                 correct (int|null), and for a gap question gaps (a list
+	 *                 of accepted answers per gap). A gap question's body
+	 *                 holds its answers: only TBTTM_Gaps::public_body() of it
+	 *                 may reach the student page.
 	 */
 	public static function get_questions( $test_id ) {
 		global $wpdb;
@@ -539,8 +548,22 @@ class TBTTM_DB {
 			$data    = json_decode( (string) $row->data, true );
 			$options = isset( $data['options'] ) && is_array( $data['options'] ) ? array_values( array_map( 'strval', $data['options'] ) ) : array();
 			$correct = isset( $data['correct'] ) && is_numeric( $data['correct'] ) ? (int) $data['correct'] : null;
-			$out[]   = array(
+			// Empty or unknown reads as multiple choice: everything stored
+			// before 0.5.0 is.
+			if ( 'gap' === $row->type ) {
+				$out[] = array(
+					'id'      => (int) $row->id,
+					'type'    => 'gap',
+					'body'    => (string) $row->body,
+					'options' => array(),
+					'correct' => null,
+					'gaps'    => TBTTM_Gaps::parse( (string) $row->body ),
+				);
+				continue;
+			}
+			$out[] = array(
 				'id'      => (int) $row->id,
+				'type'    => 'choice',
 				'body'    => (string) $row->body,
 				'options' => $options,
 				'correct' => $correct,

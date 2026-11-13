@@ -20,7 +20,11 @@
  *   lesson_id         int > 0, or null; always null without a class
  *   certificate       bool: true only for a real true
  *   email_result      bool: true only for a real true
- *   questions         list of { id (0 = new), body, options[], correct (int|null) }
+ *   questions         list of { id (0 = new), type 'choice', body, options[], correct (int|null) }
+ *                     or      { id (0 = new), type 'gap', body, gaps[][] }
+ *
+ * A gap question's body holds its gaps in square brackets; `gaps` is read
+ * from it by TBTTM_Gaps on every save.
  *
  * The class uses only a handful of WordPress functions, so
  * tests/test-validator.php can run it without WordPress.
@@ -136,6 +140,9 @@ class TBTTM_Validator {
 		// Published questions carry only real answers: empty option fields
 		// are dropped and the answer key follows its option.
 		foreach ( $clean['questions'] as $i => $q ) {
+			if ( 'gap' === $q['type'] ) {
+				continue;
+			}
 			$options = array();
 			$correct = null;
 			foreach ( $q['options'] as $k => $text ) {
@@ -162,6 +169,21 @@ class TBTTM_Validator {
 	 * @return string
 	 */
 	public static function problem( array $q ) {
+		if ( 'gap' === ( $q['type'] ?? 'choice' ) ) {
+			switch ( TBTTM_Gaps::issue( $q['body'] ) ) {
+				case 'empty':
+					return __( 'no text', 'tbt-test-maker' );
+				case 'none':
+					return __( 'no gap yet', 'tbt-test-maker' );
+				case 'hollow':
+					return __( 'a gap is empty', 'tbt-test-maker' );
+				case 'open':
+					return __( 'a bracket is not closed', 'tbt-test-maker' );
+				case 'many':
+					return __( 'too many gaps', 'tbt-test-maker' );
+			}
+			return '';
+		}
 		if ( '' === trim( $q['body'] ) ) {
 			return __( 'no question text', 'tbt-test-maker' );
 		}
@@ -213,6 +235,20 @@ class TBTTM_Validator {
 	 * @return array
 	 */
 	private function sanitise_question( array $q ) {
+		$id = isset( $q['id'] ) && is_numeric( $q['id'] ) ? max( 0, (int) $q['id'] ) : 0;
+
+		// The type decides, never the content: square brackets in a multiple
+		// choice question stay ordinary text.
+		if ( isset( $q['type'] ) && 'gap' === $q['type'] ) {
+			$body = self::cut( self::multiline( $q['body'] ?? '' ), TBTTM_Gaps::BODY_MAX );
+			return array(
+				'id'   => $id,
+				'type' => 'gap',
+				'body' => $body,
+				'gaps' => TBTTM_Gaps::parse( $body ),
+			);
+		}
+
 		$options = array();
 		$raw_opt = isset( $q['options'] ) && is_array( $q['options'] ) ? array_values( $q['options'] ) : array();
 		foreach ( array_slice( $raw_opt, 0, self::OPTIONS_MAX ) as $o ) {
@@ -228,7 +264,8 @@ class TBTTM_Validator {
 		}
 
 		return array(
-			'id'      => isset( $q['id'] ) && is_numeric( $q['id'] ) ? max( 0, (int) $q['id'] ) : 0,
+			'id'      => $id,
+			'type'    => 'choice',
 			'body'    => self::cut( self::multiline( $q['body'] ?? '' ), self::BODY_MAX ),
 			'options' => $options,
 			'correct' => $correct,

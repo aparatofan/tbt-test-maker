@@ -51,6 +51,7 @@ function sanitize_textarea_field( $str ) {
 	return trim( $str );
 }
 
+require __DIR__ . '/../includes/class-tbttm-gaps.php';
 require __DIR__ . '/../includes/class-tbttm-validator.php';
 
 $pass = 0;
@@ -146,7 +147,7 @@ $r = $v->validate( test( array( 'questions' => $many ) ) );
 ok( is_wp_error( $r ) && 0 === strpos( $r->get_error_message(), 'Questions 1, 2, 3, 4, 5, 6, 7, 8… are not finished.' ), 'publish: long list is cut with …' );
 
 $r = $v->validate( test( array( 'questions' => array( question( 'Q', array( 'a', '', 'c', 'd' ), 2 ) ) ) ) );
-same( is_wp_error( $r ) ? null : $r['questions'][0], array( 'id' => 0, 'body' => 'Q', 'options' => array( 'a', 'c', 'd' ), 'correct' => 1 ), 'publish: empty options dropped, key follows its option' );
+same( is_wp_error( $r ) ? null : $r['questions'][0], array( 'id' => 0, 'type' => 'choice', 'body' => 'Q', 'options' => array( 'a', 'c', 'd' ), 'correct' => 1 ), 'publish: empty options dropped, key follows its option' );
 
 /* ---------- limits ---------- */
 
@@ -244,11 +245,81 @@ $draft = test(
 );
 $r = $v->sanitise( $draft );
 same( count( $r['questions'] ), 3, 'draft: unfinished questions pass sanitise()' );
-same( $r['questions'][1], array( 'id' => 0, 'body' => '', 'options' => array( '', '', '' ), 'correct' => null ), 'draft: an empty question is kept as it is' );
+same( $r['questions'][1], array( 'id' => 0, 'type' => 'choice', 'body' => '', 'options' => array( '', '', '' ), 'correct' => null ), 'draft: an empty question is kept as it is' );
 same( $r['questions'][2]['options'], array( 'a', '' ), 'draft: empty option fields kept in place' );
 same( error_code( $v->validate( $draft ) ), 'tbttm_unfinished_questions', 'draft: the same test cannot be published' );
 same( $v->sanitise( array() )['questions'], array(), 'draft: an empty payload sanitises' );
 same( $v->sanitise( array( 'questions' => 'nonsense' ) )['questions'], array(), 'draft: junk questions ignored' );
+
+/* ---------- fill in the gaps ---------- */
+
+function gapq( $body, $id = 0 ) {
+	return array(
+		'id'      => $id,
+		'type'    => 'gap',
+		'body'    => $body,
+		// What the builder still holds from the other type: dropped on save.
+		'options' => array( 'left', 'over' ),
+		'correct' => 1,
+	);
+}
+function gap_problem( $body ) {
+	global $v;
+	$r = $v->validate( test( array( 'questions' => array( gapq( $body ) ) ) ) );
+	return is_wp_error( $r ) ? $r->get_error_message() : '';
+}
+
+$r = $v->sanitise( test( array( 'questions' => array( gapq( "I couldn't agree [more].", 9 ) ) ) ) );
+same(
+	$r['questions'][0],
+	array( 'id' => 9, 'type' => 'gap', 'body' => "I couldn't agree [more].", 'gaps' => array( array( 'more' ) ) ),
+	'gap: body kept, gaps read from it, options and correct dropped'
+);
+
+$r = $v->validate( test( array( 'questions' => array( gapq( "As [far] as I'm [concerned], it was too long." ) ) ) ) );
+ok( ! is_wp_error( $r ), 'gap: a question with two gaps can be published' );
+same( $r['questions'][0]['gaps'], array( array( 'far' ), array( 'concerned' ) ), 'gap: several gaps, in order' );
+ok( ! array_key_exists( 'options', $r['questions'][0] ), 'gap: a published gap question has no options' );
+
+$r = $v->validate( test( array( 'questions' => array( gapq( "Really? I [don't | do not] think so." ) ) ) ) );
+same( $r['questions'][0]['gaps'], array( array( "don't", 'do not' ) ), 'gap: accepted alternatives, trimmed' );
+same( $r['questions'][0]['body'], "Really? I [don't | do not] think so.", 'gap: the body stays as the teacher wrote it' );
+
+$r = $v->validate( test( array( 'questions' => array( gapq( 'Zażółć [gęślą] jaźń.' ) ) ) ) );
+same( $r['questions'][0]['gaps'], array( array( 'gęślą' ) ), 'gap: Polish letters' );
+
+$r = $v->validate( test( array( 'questions' => array( question(), gapq( 'I see your [point].' ) ) ) ) );
+ok( ! is_wp_error( $r ), 'gap: gap and multiple choice questions sit in one test' );
+same( array( $r['questions'][0]['type'], $r['questions'][1]['type'] ), array( 'choice', 'gap' ), 'gap: each question keeps its type' );
+
+same( gap_problem( '' ), 'Question 1 is not finished: no text.', 'gap: no text' );
+same( gap_problem( 'I could not agree more.' ), 'Question 1 is not finished: no gap yet.', 'gap: no gap yet' );
+same( gap_problem( 'I could not [ ] agree [more].' ), 'Question 1 is not finished: a gap is empty.', 'gap: a gap is empty' );
+same( gap_problem( 'I could not [|] agree.' ), 'Question 1 is not finished: a gap is empty.', 'gap: only separators is empty' );
+same( gap_problem( 'I could not agree [more] or [less.' ), 'Question 1 is not finished: a bracket is not closed.', 'gap: a bracket is not closed' );
+same( gap_problem( 'I could ] not agree [more].' ), 'Question 1 is not finished: a bracket is not closed.', 'gap: a closing bracket alone' );
+same( gap_problem( 'An [[inner]] gap.' ), 'Question 1 is not finished: a bracket is not closed.', 'gap: brackets do not nest' );
+same( gap_problem( str_repeat( '[a] ', TBTTM_Gaps::GAPS_MAX + 1 ) ), 'Question 1 is not finished: too many gaps.', 'gap: too many gaps' );
+same( gap_problem( str_repeat( '[a] ', TBTTM_Gaps::GAPS_MAX ) ), '', 'gap: sixty gaps are allowed' );
+
+$broken = test( array( 'questions' => array( gapq( 'No gap here' ), gapq( '' ), gapq( 'Open [bracket' ) ) ) );
+same( count( $v->sanitise( $broken )['questions'] ), 3, 'gap: a draft saves with any of these' );
+same( error_code( $v->validate( $broken ) ), 'tbttm_unfinished_questions', 'gap: the same draft cannot be published' );
+
+// The type decides, never the content.
+$r = $v->validate( test( array( 'questions' => array( question( 'Choose: I [more] agree.' ) ) ) ) );
+ok( ! is_wp_error( $r ), 'choice: a bracket in a multiple choice question is ordinary text' );
+same( $r['questions'][0]['type'], 'choice', 'choice: it stays multiple choice' );
+same( $r['questions'][0]['body'], 'Choose: I [more] agree.', 'choice: brackets kept in the text' );
+ok( ! array_key_exists( 'gaps', $r['questions'][0] ), 'choice: no gaps read from it' );
+same( $v->sanitise( test( array( 'questions' => array( array_merge( question(), array( 'type' => 'essay' ) ) ) ) ) )['questions'][0]['type'], 'choice', 'choice: an unknown type is multiple choice' );
+
+// Limits: a gap body is longer than a multiple choice one.
+$long = str_repeat( 'word ', 1100 ) . '[gap]';
+$r    = $v->sanitise( test( array( 'questions' => array( gapq( $long ), question( $long ) ) ) ) );
+same( $r['questions'][0]['body'], $long, 'gap: a body up to 6000 characters is kept whole' );
+same( mb_strlen( $r['questions'][1]['body'] ) <= TBTTM_Validator::BODY_MAX, true, 'choice: a body is still cut at 2000' );
+same( mb_strlen( $v->sanitise( test( array( 'questions' => array( gapq( str_repeat( 'x', 7000 ) ) ) ) ) )['questions'][0]['body'] ), TBTTM_Gaps::BODY_MAX, 'gap: a longer body is cut at 6000' );
 
 echo "{$pass} passed, {$fail} failed\n";
 exit( $fail ? 1 : 0 );
