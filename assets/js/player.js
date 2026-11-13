@@ -29,6 +29,48 @@
 	 * Helpers
 	 * ------------------------------------------------------------------- */
 
+	/**
+	 * A shuffle bag: the list is shuffled and dealt in order, and shuffled
+	 * again only when it runs out, never so that the first new phrase repeats
+	 * the last one dealt. An empty list deals ''.
+	 */
+	function bag( list ) {
+		var all = ( Array.isArray( list ) ? list : [] ).filter( function ( p ) {
+			return typeof p === 'string' && p !== '';
+		} );
+		var pile = [];
+		var last = null;
+		return {
+			size: all.length,
+			deal: function () {
+				if ( ! all.length ) {
+					return '';
+				}
+				if ( ! pile.length ) {
+					pile = all.slice();
+					for ( var i = pile.length - 1; i > 0; i-- ) {
+						var j = Math.floor( Math.random() * ( i + 1 ) );
+						var t = pile[ i ];
+						pile[ i ] = pile[ j ];
+						pile[ j ] = t;
+					}
+					if ( pile.length > 1 && pile[ 0 ] === last ) {
+						var k = 1 + Math.floor( Math.random() * ( pile.length - 1 ) );
+						pile[ 0 ] = pile[ k ];
+						pile[ k ] = last;
+					}
+				}
+				last = pile.shift();
+				return last;
+			},
+		};
+	}
+
+	// The feedback phrases of a test marked after each question, shuffled
+	// once for the page.
+	var PHRASES = CFG.phrases || {};
+	var BAGS = { right: bag( PHRASES.right ), fun: bag( PHRASES.fun ), wrong: bag( PHRASES.wrong ) };
+
 	function esc( t ) {
 		return String( t == null ? '' : t ).replace( /[&<>"']/g, function ( c ) {
 			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ c ];
@@ -264,6 +306,9 @@
 		var EMAIL_HINT = 'We send your result here. Nothing else.';
 		var EMAIL_MISSING = 'Type your email to start.';
 		var guest = GUEST ? readGuest() : null;
+		// What each checked question said, by question id. In memory only:
+		// never saved, never sent.
+		var said = {};
 
 		// Class Progress in TBT Notes: only for a logged-in student who is
 		// not the owner, on a published test. Without the block, or without
@@ -682,6 +727,7 @@
 			s.answers = {};
 			s.dirty = {};
 			s.checked = {};
+			said = {};
 			s.revealed = state.revealed || {};
 			( state.checked || [] ).forEach( function ( id ) { s.checked[ id ] = true; } );
 			var byId = {};
@@ -1021,6 +1067,7 @@
 				}
 				delete s.dirty[ id ];
 				writeLocal();
+				said[ id ] = phrase( allRight( q ) );
 				s.justDone = s.i;
 				render();
 			}, function ( err ) {
@@ -1289,14 +1336,59 @@
 			} );
 		}
 
-		/** What a checked gap question says: "Correct." or the points and the right words. */
+		/** The student's first name: the account's, or the first word a guest typed. */
+		function firstName() {
+			return GUEST ? cleanName( guest ? guest.name : s.name ).split( ' ' )[ 0 ] : cleanName( CFG.firstName );
+		}
+
+		/**
+		 * Pick what a checked question says. Right: about one time in four a
+		 * funny phrase, otherwise a plain one ending in "!", about one time in
+		 * three with the first name. Wrong: a phrase as written. '' when the
+		 * lists are empty: the notice then says "Correct." or "Not quite."
+		 */
+		function phrase( ok ) {
+			if ( ! ok ) {
+				return BAGS.wrong.deal();
+			}
+			if ( BAGS.fun.size && ( ! BAGS.right.size || Math.random() < 0.25 ) ) {
+				return BAGS.fun.deal();
+			}
+			var text = BAGS.right.deal();
+			if ( ! text ) {
+				return '';
+			}
+			var name = firstName();
+			return text + ( name && Math.random() < 1 / 3 ? ', ' + name : '' ) + '!';
+		}
+
+		/**
+		 * A checked question's phrase: picked once, then the same on every
+		 * render. A question checked before this page loaded gets its phrase
+		 * the first time it is shown.
+		 */
+		function saidFor( q ) {
+			if ( said[ q.id ] === undefined ) {
+				said[ q.id ] = phrase( allRight( q ) );
+			}
+			return said[ q.id ];
+		}
+
+		/** Screen readers hear the verdict before the phrase. */
+		function verdictSr( ok ) {
+			return '<span class="tbttm-sr-only">' + ( ok ? 'Correct. ' : 'Incorrect. ' ) + '</span>';
+		}
+
+		/** What a checked gap question says: a phrase, or the points, a phrase and the right words. */
 		function gapNotice( q ) {
 			var r = s.revealed[ q.id ] || {};
 			var verdict = r.right || [];
 			var correct = r.correct || [];
 			var won = verdict.filter( Boolean ).length;
+			var line = saidFor( q );
 			if ( won === q.gaps ) {
-				return '<div class="tbttm-notice tbttm-notice--ok" role="status"><p><strong>Correct.</strong></p></div>';
+				return '<div class="tbttm-notice tbttm-notice--ok" role="status"><p>'
+					+ ( line ? verdictSr( true ) + '<strong>' + esc( line ) + '</strong>' : '<strong>Correct.</strong>' ) + '</p></div>';
 			}
 			var wrong = [];
 			for ( var g = 0; g < q.gaps; g++ ) {
@@ -1304,8 +1396,13 @@
 					wrong.push( '<strong>' + esc( correct[ g ] ) + '</strong>' );
 				}
 			}
-			return '<div class="tbttm-notice tbttm-notice--error" role="status"><p><strong>'
-				+ ( q.gaps > 1 ? won + ' of ' + q.gaps + ' points.' : 'Not quite.' ) + '</strong> Correct: ' + wrong.join( ', ' ) + '</p></div>';
+			var head = '<strong>' + ( line ? esc( line ) : 'Not quite.' ) + '</strong>';
+			if ( q.gaps > 1 ) {
+				// The points stay in bold; the phrase follows in normal weight.
+				head = '<strong>' + won + ' of ' + q.gaps + ' points.</strong>' + ( line ? ' ' + esc( line ) : '' );
+			}
+			return '<div class="tbttm-notice tbttm-notice--error" role="status"><p>'
+				+ ( line ? verdictSr( false ) : '' ) + head + ' Correct: ' + wrong.join( ', ' ) + '</p></div>';
 		}
 
 		/** The unanswered warning's content, or '' when nothing is missing. */
@@ -1383,9 +1480,13 @@
 				html += '</fieldset>';
 
 				if ( lock ) {
+					var line = saidFor( q );
 					html += a === right
-						? '<div class="tbttm-notice tbttm-notice--ok" role="status"><p><strong>Correct.</strong></p></div>'
-						: '<div class="tbttm-notice tbttm-notice--error" role="status"><p><strong>Not quite.</strong> The correct answer is ' + LETTERS[ right ] + '.</p></div>';
+						? '<div class="tbttm-notice tbttm-notice--ok" role="status"><p>'
+							+ ( line ? verdictSr( true ) + '<strong>' + esc( line ) + '</strong>' : '<strong>Correct.</strong>' ) + '</p></div>'
+						: '<div class="tbttm-notice tbttm-notice--error" role="status"><p>'
+							+ ( line ? verdictSr( false ) + '<strong>' + esc( line ) + '</strong>' : '<strong>Not quite.</strong>' )
+							+ ' The correct answer is ' + LETTERS[ right ] + '.</p></div>';
 				}
 			}
 			if ( s.checkFailed ) {

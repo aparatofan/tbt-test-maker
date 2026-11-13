@@ -65,8 +65,117 @@ class TBTTM_Player {
 				'ajax'    => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
 				'userId'  => get_current_user_id(),
 				'bulls'   => TBTTM_Settings::bulls(),
+				// For the feedback line in a test marked after each question:
+				// the student's first name ('' for a guest, or when the account
+				// has none) and the phrases to pick from.
+				'firstName' => self::first_name(),
+				'phrases'   => self::feedback_phrases(),
 			) + self::activity_config()
 		);
+	}
+
+	/**
+	 * The logged-in user's first name, or '' for a guest and for an account
+	 * without one.
+	 *
+	 * @return string
+	 */
+	private static function first_name() {
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return '';
+		}
+		return trim( (string) get_user_meta( $user_id, 'first_name', true ) );
+	}
+
+	/**
+	 * What a checked question says in a test marked after each question.
+	 * 'right' phrases come without final punctuation: the page adds "!" or
+	 * ", Name!". 'fun' and 'wrong' phrases are complete as written.
+	 *
+	 * @return array{right: string[], fun: string[], wrong: string[]}
+	 */
+	private static function feedback_phrases() {
+		$phrases = array(
+			'right' => array(
+				__( 'Well done', 'tbt-test-maker' ),
+				__( 'Nice work', 'tbt-test-maker' ),
+				__( 'You rock', 'tbt-test-maker' ),
+				__( 'Way to go', 'tbt-test-maker' ),
+				__( 'Brilliant', 'tbt-test-maker' ),
+				__( 'Keep it up', 'tbt-test-maker' ),
+				__( 'Outstanding', 'tbt-test-maker' ),
+				__( 'Superb', 'tbt-test-maker' ),
+				__( "That's the way", 'tbt-test-maker' ),
+				__( 'You did it', 'tbt-test-maker' ),
+				__( 'Good job', 'tbt-test-maker' ),
+				__( 'Spot on', 'tbt-test-maker' ),
+				__( 'Nailed it', 'tbt-test-maker' ),
+				__( 'Exactly right', 'tbt-test-maker' ),
+				__( 'Perfect', 'tbt-test-maker' ),
+				__( 'Excellent', 'tbt-test-maker' ),
+				__( 'Great stuff', 'tbt-test-maker' ),
+				__( 'Fantastic', 'tbt-test-maker' ),
+				__( 'Top marks', 'tbt-test-maker' ),
+				__( "You're on fire", 'tbt-test-maker' ),
+				__( 'Bang on', 'tbt-test-maker' ),
+				__( 'Impressive', 'tbt-test-maker' ),
+			),
+			'fun'   => array(
+				__( 'Scientists should study your big, beautiful brain 🙂', 'tbt-test-maker' ),
+				__( 'Shakespeare would be jealous 🙂', 'tbt-test-maker' ),
+				__( "Careful, you're making this look easy 🙂", 'tbt-test-maker' ),
+				__( 'Someone has been doing their homework 🙂', 'tbt-test-maker' ),
+				__( 'Give that brain a medal 🏅', 'tbt-test-maker' ),
+				__( 'Your teacher is smiling right now 🙂', 'tbt-test-maker' ),
+				__( "Are you sure you're not a native speaker? 🙂", 'tbt-test-maker' ),
+				__( 'The dictionary wants to hire you 🙂', 'tbt-test-maker' ),
+				__( 'Frame that answer and hang it on the wall 🖼️', 'tbt-test-maker' ),
+				__( "Too easy for you, wasn't it? 😎", 'tbt-test-maker' ),
+				__( 'Grammar ninja at work 🥷', 'tbt-test-maker' ),
+				__( 'Your brain deserves a coffee break ☕', 'tbt-test-maker' ),
+			),
+			'wrong' => array(
+				__( 'Not quite.', 'tbt-test-maker' ),
+				__( 'So close.', 'tbt-test-maker' ),
+				__( 'Nice try.', 'tbt-test-maker' ),
+				__( 'Almost.', 'tbt-test-maker' ),
+				__( 'Not this time.', 'tbt-test-maker' ),
+				__( "Don't worry, the next one is yours.", 'tbt-test-maker' ),
+				__( 'Mistakes are how we learn.', 'tbt-test-maker' ),
+				__( 'Good try.', 'tbt-test-maker' ),
+				__( 'Close, but not quite.', 'tbt-test-maker' ),
+				__( 'Keep going.', 'tbt-test-maker' ),
+				__( 'Now you know.', 'tbt-test-maker' ),
+				__( 'That one was tricky.', 'tbt-test-maker' ),
+				__( 'Every expert was once a beginner.', 'tbt-test-maker' ),
+				__( 'Even Shakespeare had bad days 🙂', 'tbt-test-maker' ),
+				__( 'Your brain is just warming up 🙂', 'tbt-test-maker' ),
+				__( 'Shake it off 🙂', 'tbt-test-maker' ),
+			),
+		);
+
+		/**
+		 * Filters the feedback phrases of the student page.
+		 *
+		 * @param array $phrases Lists of strings under 'right', 'fun' and 'wrong'.
+		 */
+		$phrases = apply_filters( 'tbttm_feedback_phrases', $phrases );
+
+		// Whatever a filter returns, the page gets three lists of non-empty
+		// strings. An empty list makes it fall back to "Correct." / "Not quite."
+		$clean = array();
+		foreach ( array( 'right', 'fun', 'wrong' ) as $kind ) {
+			$clean[ $kind ] = array();
+			$list           = is_array( $phrases ) && isset( $phrases[ $kind ] ) && is_array( $phrases[ $kind ] ) ? $phrases[ $kind ] : array();
+			foreach ( $list as $phrase ) {
+				$phrase = is_scalar( $phrase ) ? trim( (string) $phrase ) : '';
+				if ( '' !== $phrase ) {
+					$clean[ $kind ][] = $phrase;
+				}
+			}
+		}
+		return $clean;
 	}
 
 	/**
