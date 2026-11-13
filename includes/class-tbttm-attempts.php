@@ -10,6 +10,12 @@
  * the question's ID (from 0.3.0), what the student saw and what they chose. Results are always rendered from it, never
  * from the live questions, so editing a test later does not change old
  * results.
+ *
+ * From 0.5.0 a question is multiple choice or fill in the gaps. An answer is
+ * an option index for the first and a list of typed words, one per gap, for
+ * the second. Scores count points: one per multiple choice question, one per
+ * gap. A gap question's stored body holds its answers, so the student page
+ * only ever receives TBTTM_Gaps::public_body() of it.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -25,8 +31,20 @@ class TBTTM_Attempts {
 	public static function public_questions( array $questions ) {
 		$out = array();
 		foreach ( $questions as $q ) {
+			if ( self::is_gap( $q ) ) {
+				// No accepted answers and no answer lengths: every gap is
+				// the same empty marker.
+				$out[] = array(
+					'id'   => (int) $q['id'],
+					'type' => 'gap',
+					'body' => TBTTM_Gaps::public_body( (string) $q['body'] ),
+					'gaps' => count( $q['gaps'] ),
+				);
+				continue;
+			}
 			$out[] = array(
 				'id'      => (int) $q['id'],
+				'type'    => 'choice',
 				'body'    => (string) $q['body'],
 				'options' => array_values( array_map( 'strval', $q['options'] ) ),
 			);
@@ -35,22 +53,63 @@ class TBTTM_Attempts {
 	}
 
 	/**
-	 * Stored answers: question ID → option index.
+	 * Whether a question from TBTTM_DB::get_questions() is fill in the gaps.
+	 * A question without a type is multiple choice.
+	 *
+	 * @param array $q Question.
+	 * @return bool
+	 */
+	public static function is_gap( array $q ) {
+		return isset( $q['type'] ) && 'gap' === $q['type'] && isset( $q['gaps'] ) && is_array( $q['gaps'] );
+	}
+
+	/**
+	 * Stored answers: question ID → option index, or for a gap question a
+	 * list of typed words.
 	 *
 	 * @param object $attempt Attempt row.
-	 * @return array<int, int>
+	 * @return array<int, int|string[]>
 	 */
 	public static function answers( $attempt ) {
 		$raw = json_decode( (string) $attempt->answers, true );
 		$out = array();
 		if ( is_array( $raw ) ) {
 			foreach ( $raw as $qid => $k ) {
-				if ( is_numeric( $qid ) && is_numeric( $k ) ) {
+				if ( ! is_numeric( $qid ) ) {
+					continue;
+				}
+				if ( is_array( $k ) ) {
+					$out[ (int) $qid ] = array_map( array( 'TBTTM_Gaps', 'clean' ), array_values( $k ) );
+				} elseif ( is_numeric( $k ) ) {
 					$out[ (int) $qid ] = (int) $k;
 				}
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * How many questions have an answer: a multiple choice question with an
+	 * option chosen, a gap question with text in every gap.
+	 *
+	 * @param array   $answers   Answers, from answers().
+	 * @param array[] $questions The test's questions.
+	 * @return int
+	 */
+	public static function answered( array $answers, array $questions ) {
+		$n = 0;
+		foreach ( $questions as $q ) {
+			$qid = (int) $q['id'];
+			if ( ! array_key_exists( $qid, $answers ) ) {
+				continue;
+			}
+			if ( self::is_gap( $q ) ) {
+				$n += TBTTM_Gaps::complete( $answers[ $qid ], count( $q['gaps'] ) ) ? 1 : 0;
+			} elseif ( ! is_array( $answers[ $qid ] ) ) {
+				++$n;
+			}
+		}
+		return $n;
 	}
 
 	/**
@@ -66,32 +125,52 @@ class TBTTM_Attempts {
 
 	/**
 	 * Merge incoming answers into stored ones. An answer counts only when its
-	 * question is in the test, its option exists, and the question has not
-	 * been checked yet; everything else is ignored.
+	 * question is in the test, it is the kind of answer that question takes,
+	 * and the question has not been checked yet; everything else is ignored.
+	 * A multiple choice answer must name an option that exists. A gap answer
+	 * is a list: padded or cut to the number of gaps, every word cleaned as
+	 * one line of text and cut to 100 characters.
 	 *
-	 * @param array<int, int> $stored    Stored answers.
-	 * @param mixed           $incoming  Raw map from the request.
-	 * @param array[]         $questions The test's questions.
-	 * @param int[]           $checked   Checked question IDs.
-	 * @return array<int, int>
+	 * @param array   $stored    Stored answers.
+	 * @param mixed   $incoming  Raw map from the request.
+	 * @param array[] $questions The test's questions.
+	 * @param int[]   $checked   Checked question IDs.
+	 * @return array<int, int|string[]>
 	 */
 	public static function merge( array $stored, $incoming, array $questions, array $checked ) {
 		if ( ! is_array( $incoming ) ) {
 			return $stored;
 		}
 		$sizes = array();
+		$gaps  = array();
 		foreach ( $questions as $q ) {
-			$sizes[ (int) $q['id'] ] = count( $q['options'] );
+			if ( self::is_gap( $q ) ) {
+				$gaps[ (int) $q['id'] ] = count( $q['gaps'] );
+			} else {
+				$sizes[ (int) $q['id'] ] = count( $q['options'] );
+			}
 		}
 		$locked = array_flip( $checked );
 
 		foreach ( $incoming as $qid => $k ) {
-			if ( ! is_numeric( $qid ) || ! is_numeric( $k ) ) {
+			if ( ! is_numeric( $qid ) ) {
 				continue;
 			}
 			$qid = (int) $qid;
-			$k   = (int) $k;
-			if ( ! isset( $sizes[ $qid ] ) || isset( $locked[ $qid ] ) || $k < 0 || $k >= $sizes[ $qid ] ) {
+			if ( isset( $locked[ $qid ] ) ) {
+				continue;
+			}
+			if ( isset( $gaps[ $qid ] ) ) {
+				if ( is_array( $k ) ) {
+					$stored[ $qid ] = TBTTM_Gaps::shape( $k, $gaps[ $qid ] );
+				}
+				continue;
+			}
+			if ( ! isset( $sizes[ $qid ] ) || ! is_numeric( $k ) ) {
+				continue;
+			}
+			$k = (int) $k;
+			if ( $k < 0 || $k >= $sizes[ $qid ] ) {
 				continue;
 			}
 			$stored[ $qid ] = $k;
@@ -101,7 +180,9 @@ class TBTTM_Attempts {
 
 	/**
 	 * The state the student page starts from: answers, checked questions, and
-	 * the correct option of each checked question (already revealed).
+	 * what each checked question already revealed: the correct option, or for
+	 * a gap question the verdict on each gap and its first accepted answer.
+	 * Nothing about an unchecked question is in it.
 	 *
 	 * @param object  $attempt   Attempt row.
 	 * @param array[] $questions The test's questions.
@@ -109,34 +190,80 @@ class TBTTM_Attempts {
 	 */
 	public static function state( $attempt, array $questions ) {
 		$checked  = self::checked( $attempt );
+		$answers  = self::answers( $attempt );
 		$revealed = array();
 		foreach ( $questions as $q ) {
-			if ( in_array( (int) $q['id'], $checked, true ) && null !== $q['correct'] ) {
+			if ( ! in_array( (int) $q['id'], $checked, true ) ) {
+				continue;
+			}
+			if ( self::is_gap( $q ) ) {
+				$revealed[ (string) $q['id'] ] = self::reveal( $q, $answers[ (int) $q['id'] ] ?? null );
+			} elseif ( null !== $q['correct'] ) {
 				$revealed[ (string) $q['id'] ] = (int) $q['correct'];
 			}
 		}
 		return array(
 			'id'       => (int) $attempt->id,
 			'token'    => (string) $attempt->token,
-			'answers'  => (object) self::answers( $attempt ),
+			'answers'  => (object) $answers,
 			'checked'  => $checked,
 			'revealed' => (object) $revealed,
 		);
 	}
 
 	/**
-	 * Score an attempt and build its snapshot.
+	 * What checking a gap question reveals: the verdict on each gap, and the
+	 * first accepted answer of each. Only ever sent for a checked question.
 	 *
-	 * @param array<int, int> $answers   Final answers.
-	 * @param array[]         $questions The test's questions at finish.
+	 * @param array $q     Gap question.
+	 * @param mixed $given The stored answer.
+	 * @return array{right:bool[],correct:string[]}
+	 */
+	public static function reveal( array $q, $given ) {
+		return array(
+			'right'   => TBTTM_Gaps::mark( $q['gaps'], TBTTM_Gaps::shape( $given, count( $q['gaps'] ) ) ),
+			'correct' => TBTTM_Gaps::first( $q['gaps'] ),
+		);
+	}
+
+	/**
+	 * Score an attempt and build its snapshot. Points: one for a right
+	 * multiple choice answer, one for each right gap; `total` is every point
+	 * in the test.
+	 *
+	 * A review entry without `type` is a multiple choice entry: that is how
+	 * every entry stored before 0.5.0 reads, and none of them is rewritten.
+	 *
+	 * @param array   $answers   Final answers.
+	 * @param array[] $questions The test's questions at finish.
 	 * @return array{score:int,total:int,percent:int,review:array}
 	 */
 	public static function score( array $answers, array $questions ) {
 		$score  = 0;
+		$total  = 0;
 		$review = array();
 		foreach ( $questions as $q ) {
-			$qid    = (int) $q['id'];
-			$chosen = array_key_exists( $qid, $answers ) ? (int) $answers[ $qid ] : null;
+			$qid = (int) $q['id'];
+			if ( self::is_gap( $q ) ) {
+				$gaps   = array_values( $q['gaps'] );
+				$given  = TBTTM_Gaps::shape( $answers[ $qid ] ?? null, count( $gaps ) );
+				$right  = TBTTM_Gaps::mark( $gaps, $given );
+				$score += count( array_filter( $right ) );
+				$total += count( $gaps );
+				$review[] = array(
+					'id'    => $qid,
+					'type'  => 'gap',
+					'body'  => (string) $q['body'],
+					'gaps'  => $gaps,
+					'given' => $given,
+					'right' => $right,
+				);
+				continue;
+			}
+			++$total;
+			// An answer of the wrong kind (the question changed type while
+			// the attempt was open) is no answer.
+			$chosen = array_key_exists( $qid, $answers ) && ! is_array( $answers[ $qid ] ) ? (int) $answers[ $qid ] : null;
 			if ( null !== $chosen && null !== $q['correct'] && $chosen === (int) $q['correct'] ) {
 				++$score;
 			}
@@ -151,7 +278,6 @@ class TBTTM_Attempts {
 				'correct' => null === $q['correct'] ? null : (int) $q['correct'],
 			);
 		}
-		$total = count( $questions );
 		return array(
 			'score'   => $score,
 			'total'   => $total,

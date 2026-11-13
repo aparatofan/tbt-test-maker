@@ -196,11 +196,10 @@ class TBTTM_Player {
 		if ( ! $is_draft && ! $is_guest ) {
 			$open = TBTTM_DB::get_user_attempt( (int) $test->id, $user_id, TBTTM_DB::ATTEMPT_IN_PROGRESS );
 			if ( $open ) {
-				$ids    = array_column( $questions, 'id' );
-				$given  = array_intersect( array_keys( TBTTM_Attempts::answers( $open ) ), $ids );
 				$resume = array(
 					'id'       => (int) $open->id,
-					'answered' => count( $given ),
+					// A gap question counts only when every gap has text.
+					'answered' => TBTTM_Attempts::answered( TBTTM_Attempts::answers( $open ), $questions ),
 				);
 			}
 			$done = TBTTM_DB::get_user_attempt( (int) $test->id, $user_id, TBTTM_DB::ATTEMPT_FINISHED );
@@ -223,7 +222,9 @@ class TBTTM_Player {
 				'image'    => $image_url ? (string) $image_url : '',
 				'draft'    => $is_draft,
 			),
-			// id, body and options only: the answer key never reaches the page.
+			// The answer key never reaches the page: a multiple choice
+			// question goes without its key, a gap question with every gap
+			// emptied (TBTTM_Gaps::public_body()), never its stored body.
 			'questions'  => $is_draft ? array() : TBTTM_Attempts::public_questions( $questions ),
 			'count'      => count( $questions ),
 			'resume'     => $resume,
