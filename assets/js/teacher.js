@@ -1115,6 +1115,10 @@
 		var CLASSES = Array.isArray( CFG.classes ) ? CFG.classes : [];
 		var lessons = src && Array.isArray( src.lessons ) ? src.lessons : [];
 		var lessonSeq = 0;
+		// The Class field is a text field with a list: what is in it, and
+		// whether that text matches none of the teacher's classes.
+		var classText = classTitle( d.class_id );
+		var classMiss = false;
 		var openQ = null;
 		var showBad = false;
 		var msg = null;
@@ -1280,29 +1284,81 @@
 			return html + shareBodyHtml( { slug: d.slug, url: d.url, access: d.savedAccess }, 'b' ) + '</section>';
 		}
 
+		/** A class's title by its ID, or '' when it is not one of the teacher's. */
+		function classTitle( id ) {
+			var title = '';
+			CLASSES.some( function ( c ) {
+				if ( +c.id === +id ) {
+					title = String( c.title );
+					return true;
+				}
+				return false;
+			} );
+			return title;
+		}
+
 		/**
-		 * The Class field: the teacher's classes A–Z, and once one is chosen
-		 * its lessons, newest first, under "Any lesson".
+		 * The Class field: a text field with the teacher's classes A–Z as its
+		 * list, and once one is chosen its lessons, newest first, under
+		 * "Any lesson".
 		 */
 		function classFieldHtml() {
 			if ( ! CLASSES.length ) {
 				return '';
 			}
-			var html = '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-class">Class</label>'
-				+ '<select class="tbttm-select" id="tbttm-f-class"><option value="0">Not in a class</option>'
+			var html = '<div class="tbttm-field tbttm-classpair"><div class="tbttm-classpair__cols">'
+				+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-class">Class</label>'
+				+ '<input class="tbttm-input" id="tbttm-f-class" type="text" list="tbttm-f-class-list" autocomplete="off" spellcheck="false"'
+				+ ' placeholder="No class — type to filter" value="' + esc( classText ) + '">'
+				+ '<datalist id="tbttm-f-class-list">'
 				+ CLASSES.map( function ( c ) {
-					return '<option value="' + c.id + '"' + ( +c.id === d.class_id ? ' selected' : '' ) + '>' + esc( c.title ) + '</option>';
-				} ).join( '' ) + '</select>';
-			if ( d.class_id ) {
-				html += '<label class="tbttm-sr-only" for="tbttm-f-lesson">Lesson</label>'
+					return '<option value="' + esc( c.title ) + '"></option>';
+				} ).join( '' ) + '</datalist></div>';
+			if ( d.class_id && ! classMiss ) {
+				html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-f-lesson">Lesson</label>'
 					+ '<select class="tbttm-select" id="tbttm-f-lesson"><option value="0">Any lesson</option>'
 					+ lessons.map( function ( l ) {
 						return '<option value="' + l.id + '"' + ( +l.id === d.lesson_id ? ' selected' : '' ) + '>' + esc( l.title ) + '</option>';
-					} ).join( '' ) + '</select>';
+					} ).join( '' ) + '</select></div>';
 			}
-			return html + '<span class="tbttm-hint">' + ( d.class_id
-				? 'The test shows in this class in TBT Notes, like a Swipe deck or a drill.'
-				: 'Attach the test to a class to show it in TBT Notes.' ) + '</span></div>';
+			var hint = 'Attach the test to a class to show it in TBT Notes.';
+			if ( classMiss ) {
+				hint = '<strong>No class matches that. Pick one from the list, or clear the field to save without a class.</strong>';
+			} else if ( d.class_id ) {
+				hint = 'The test shows in this class in TBT Notes, like a Swipe deck or a drill.';
+			}
+			return html + '</div><span class="tbttm-hint">' + hint + '</span></div>';
+		}
+
+		/**
+		 * Redraw only the Class and Lesson pair, in place. The class field's
+		 * change event also fires when the field is left, so a full render()
+		 * would swallow the click that left it and pull focus back on Tab.
+		 * The two fields themselves are kept, never replaced: a field that
+		 * has focus, or is about to get it, must still be there.
+		 */
+		function redrawClass() {
+			var box = root.querySelector( '.tbttm-classpair' );
+			if ( ! box ) {
+				return;
+			}
+			var tmp = document.createElement( 'div' );
+			tmp.innerHTML = classFieldHtml();
+			var input = document.getElementById( 'tbttm-f-class' );
+			if ( input.value !== classText ) {
+				input.value = classText;
+			}
+			var cols = box.querySelector( '.tbttm-classpair__cols' );
+			var oldLesson = document.getElementById( 'tbttm-f-lesson' );
+			var newLesson = tmp.querySelector( '#tbttm-f-lesson' );
+			if ( oldLesson && newLesson ) {
+				oldLesson.innerHTML = newLesson.innerHTML;
+			} else if ( oldLesson ) {
+				cols.removeChild( oldLesson.parentNode );
+			} else if ( newLesson ) {
+				cols.appendChild( newLesson.parentNode );
+			}
+			box.lastElementChild.innerHTML = tmp.firstChild.lastElementChild.innerHTML;
 		}
 
 		/** Choose a class: the lesson is cleared and the new class's lessons are loaded. */
@@ -1312,7 +1368,7 @@
 			d.lesson_id = 0;
 			lessons = [];
 			touch();
-			render( 'tbttm-f-class' );
+			redrawClass();
 			if ( ! id ) {
 				return;
 			}
@@ -1322,11 +1378,51 @@
 					return;
 				}
 				lessons = Array.isArray( list ) ? list : [];
-				var a = document.activeElement;
-				render( a && root.contains( a ) && a.id ? a.id : undefined );
+				redrawClass();
 			}, function () {
 				// The class still saves, with "Any lesson".
 			} );
+		}
+
+		/**
+		 * The class field changed: a suggestion was picked, or the field was
+		 * left. The text must be one of the teacher's classes (any capitals)
+		 * or empty; anything else keeps the class the test has and blocks
+		 * saving until it is put right.
+		 */
+		function classChanged( value ) {
+			var text = value.trim();
+			var hit = null;
+			CLASSES.some( function ( c ) {
+				if ( String( c.title ).trim().toLowerCase() === text.toLowerCase() ) {
+					hit = c;
+					return true;
+				}
+				return false;
+			} );
+			if ( ! text ) {
+				classMiss = false;
+				classText = '';
+				if ( d.class_id ) {
+					setClass( 0 );
+				} else {
+					redrawClass();
+				}
+				return;
+			}
+			if ( ! hit ) {
+				classMiss = true;
+				classText = value;
+				redrawClass();
+				return;
+			}
+			classMiss = false;
+			classText = String( hit.title );
+			if ( +hit.id === d.class_id ) {
+				redrawClass();
+			} else {
+				setClass( +hit.id );
+			}
 		}
 
 		/** The Certificate hint follows the pass mark: who passes, or who finishes. */
@@ -1402,7 +1498,7 @@
 				+ stageHead( 3, 'Questions', '<span data-tbttm-count>' + countLine() + '</span>' )
 				+ d.questions.map( questionHtml ).join( '' )
 				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn" data-act="addq" id="tbttm-addq"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Add question</button>'
-				+ ( imp ? '' : '<button type="button" class="tbttm-btn tbttm-btn--ghost" data-act="imp-open"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Import questions</button>' )
+				+ ( imp ? '' : '<button type="button" class="tbttm-btn" data-act="imp-open"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Import questions</button>' )
 				+ ( n >= MAX_Q ? '<span class="tbttm-hint">A test holds at most ' + MAX_Q + ' questions.</span>' : '' ) + '</div>'
 				+ ( imp ? importerHtml() : '' )
 				+ '</section>';
@@ -1483,6 +1579,16 @@
 			if ( saving ) {
 				return;
 			}
+			// A typo in the Class field must never detach the test from its class.
+			if ( classMiss ) {
+				msg = { type: 'err', text: 'Pick a class from the list, or clear the Class field to save without a class.' };
+				render( 'tbttm-f-class' );
+				var classField = document.getElementById( 'tbttm-f-class' );
+				if ( classField ) {
+					classField.scrollIntoView( { block: 'center' } );
+				}
+				return;
+			}
 			d.title = d.title.trim();
 			if ( ! d.title ) {
 				fail( 'Give the test a title.' );
@@ -1528,6 +1634,8 @@
 					d.class_id = res.class_id ? +res.class_id : 0;
 					d.lesson_id = res.lesson_id ? +res.lesson_id : 0;
 					lessons = Array.isArray( res.lessons ) ? res.lessons : [];
+					classText = classTitle( d.class_id );
+					classMiss = false;
 				}
 				// The server answers in the same order; take its question IDs
 				// and its cleaned content (published tests lose empty answers).
@@ -1699,6 +1807,11 @@
 				}
 				return;
 			}
+			if ( t.id === 'tbttm-f-class' ) {
+				// The list narrows by itself; the change event does the rest.
+				classText = t.value;
+				return;
+			}
 			if ( t.dataset.o !== undefined ) {
 				var qo = findQ( t.dataset.q );
 				qo.options[ +t.dataset.o ] = t.value;
@@ -1804,7 +1917,7 @@
 				return;
 			}
 			if ( t.id === 'tbttm-f-class' ) {
-				setClass( +t.value || 0 );
+				classChanged( t.value );
 				return;
 			}
 			if ( t.id === 'tbttm-f-lesson' ) {
