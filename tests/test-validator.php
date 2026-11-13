@@ -188,6 +188,35 @@ same( $v->sanitise( test( array( 'bulls' => false ) ) )['bulls'], false, 'bulls:
 same( $v->sanitise( array( 'title' => 'T' ) )['bulls'], true, 'bulls: on by default' );
 same( $v->sanitise( test( array( 'title' => '<b>Bold</b> title' ) ) )['title'], 'Bold title', 'title: tags stripped' );
 
+/* ---------- access, class and lesson ---------- */
+
+same( $v->sanitise( array( 'title' => 'T' ) )['access'], 'login', 'access: logged-in students by default' );
+same( $v->sanitise( test( array( 'access' => 'open' ) ) )['access'], 'open', 'access: open kept' );
+same( $v->sanitise( test( array( 'access' => 'login' ) ) )['access'], 'login', 'access: login kept' );
+same( $v->sanitise( test( array( 'access' => 'public' ) ) )['access'], 'login', 'access: anything else becomes login' );
+same( $v->sanitise( test( array( 'access' => array( 'open' ) ) ) )['access'], 'login', 'access: junk becomes login' );
+same( $v->validate( test( array( 'access' => 'open' ) ) )['access'], 'open', 'access: validate() carries it' );
+
+same( $v->sanitise( array( 'title' => 'T' ) )['class_id'], null, 'class: none by default' );
+same( $v->sanitise( test( array( 'class_id' => 12 ) ) )['class_id'], 12, 'class: a whole number kept' );
+same( $v->sanitise( test( array( 'class_id' => '12' ) ) )['class_id'], 12, 'class: a numeric string kept' );
+same( $v->sanitise( test( array( 'class_id' => '' ) ) )['class_id'], null, 'class: empty is no class' );
+same( $v->sanitise( test( array( 'class_id' => 0 ) ) )['class_id'], null, 'class: zero is no class' );
+same( $v->sanitise( test( array( 'class_id' => -3 ) ) )['class_id'], null, 'class: negative is no class' );
+same( $v->sanitise( test( array( 'class_id' => '1.5' ) ) )['class_id'], null, 'class: a fraction is no class' );
+same( $v->sanitise( test( array( 'class_id' => 1.5 ) ) )['class_id'], null, 'class: a float is no class' );
+same( $v->sanitise( test( array( 'class_id' => '12 OR 1=1' ) ) )['class_id'], null, 'class: text is no class' );
+same( $v->sanitise( test( array( 'class_id' => array( 12 ) ) ) )['class_id'], null, 'class: an array is no class' );
+
+same( $v->sanitise( test( array( 'class_id' => 12, 'lesson_id' => 40 ) ) )['lesson_id'], 40, 'lesson: kept with a class' );
+same( $v->sanitise( test( array( 'class_id' => 12, 'lesson_id' => '' ) ) )['lesson_id'], null, 'lesson: empty is any lesson' );
+same( $v->sanitise( test( array( 'class_id' => 12, 'lesson_id' => 0 ) ) )['lesson_id'], null, 'lesson: zero is any lesson' );
+same( $v->sanitise( test( array( 'class_id' => 12, 'lesson_id' => 'x' ) ) )['lesson_id'], null, 'lesson: text is any lesson' );
+same( $v->sanitise( test( array( 'lesson_id' => 40 ) ) )['lesson_id'], null, 'lesson: cleared without a class' );
+same( $v->sanitise( test( array( 'class_id' => '', 'lesson_id' => 40 ) ) )['lesson_id'], null, 'lesson: cleared when the class is empty' );
+$r = $v->validate( test( array( 'class_id' => 12, 'lesson_id' => 40 ) ) );
+same( array( $r['class_id'], $r['lesson_id'] ), array( 12, 40 ), 'class and lesson: validate() carries both' );
+
 /* ---------- drafts ---------- */
 
 $draft = test(

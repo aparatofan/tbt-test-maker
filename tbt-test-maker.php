@@ -28,6 +28,7 @@ require_once TBTTM_DIR . 'includes/class-tbttm-capabilities.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-db.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-urls.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-assets.php';
+require_once TBTTM_DIR . 'includes/class-tbttm-classes.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-validator.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-attempts.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-rest.php';

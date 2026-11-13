@@ -15,6 +15,9 @@
  *   feedback          'end' or 'now'
  *   bulls             bool
  *   pass_mark         int 1–100, or null
+ *   access            'login' or 'open'
+ *   class_id          int > 0, or null
+ *   lesson_id         int > 0, or null; always null without a class
  *   questions         list of { id (0 = new), body, options[], correct (int|null) }
  *
  * The class uses only a handful of WordPress functions, so
@@ -49,6 +52,10 @@ class TBTTM_Validator {
 		$feedback = isset( $raw['feedback'] ) && 'now' === $raw['feedback'] ? 'now' : 'end';
 		$bulls    = array_key_exists( 'bulls', $raw ) ? self::truthy( $raw['bulls'] ) : true;
 
+		$access    = isset( $raw['access'] ) && 'open' === $raw['access'] ? 'open' : 'login';
+		$class_id  = self::positive_id( $raw['class_id'] ?? null );
+		$lesson_id = null === $class_id ? null : self::positive_id( $raw['lesson_id'] ?? null );
+
 		$questions = array();
 		$raw_qs    = isset( $raw['questions'] ) && is_array( $raw['questions'] ) ? array_values( $raw['questions'] ) : array();
 		foreach ( array_slice( $raw_qs, 0, self::QUESTIONS_MAX ) as $q ) {
@@ -64,6 +71,9 @@ class TBTTM_Validator {
 			'feedback'  => $feedback,
 			'bulls'     => $bulls,
 			'pass_mark' => self::pass_mark( $raw['pass_mark'] ?? null ),
+			'access'    => $access,
+			'class_id'  => $class_id,
+			'lesson_id' => $lesson_id,
 			'questions' => $questions,
 		);
 	}
@@ -239,6 +249,24 @@ class TBTTM_Validator {
 		}
 		$n = (int) $value;
 		return $n >= 1 && $n <= 100 ? $n : null;
+	}
+
+	/**
+	 * A row ID: a positive whole number, or null for anything else. Whether
+	 * the class is one the teacher may use is the REST callback's question.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return int|null
+	 */
+	private static function positive_id( $value ) {
+		if ( is_int( $value ) ) {
+			return $value > 0 ? $value : null;
+		}
+		if ( ! is_string( $value ) || ! preg_match( '/^\d{1,18}$/', trim( $value ) ) ) {
+			return null;
+		}
+		$n = (int) trim( $value );
+		return $n > 0 ? $n : null;
 	}
 
 	/**
