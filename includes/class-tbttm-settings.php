@@ -1,7 +1,7 @@
 <?php
 /**
  * Settings page: the two pages, the roles that can build tests, the bull
- * pictures. Nested under TBT Hub when Hub is active, otherwise under the
+ * pictures, the certificate background. Nested under TBT Hub when Hub is active, otherwise under the
  * wp-admin Settings menu.
  */
 
@@ -94,6 +94,22 @@ class TBTTM_Settings {
 			'sanitize_callback' => array( $this, 'sanitize_bulls' ),
 			'default'           => self::default_bulls(),
 		) );
+		register_setting( self::GROUP, 'tbttm_certificate_bg', array(
+			'type'              => 'string',
+			'sanitize_callback' => array( $this, 'sanitize_background' ),
+			'default'           => TBTTM_Certificate::DEFAULT_BACKGROUND,
+		) );
+	}
+
+	/**
+	 * One URL; an empty field falls back to the default picture.
+	 *
+	 * @param mixed $value Submitted URL.
+	 * @return string
+	 */
+	public function sanitize_background( $value ) {
+		$url = is_string( $value ) ? esc_url_raw( trim( $value ) ) : '';
+		return '' !== $url ? $url : TBTTM_Certificate::DEFAULT_BACKGROUND;
 	}
 
 	/**
@@ -227,6 +243,36 @@ class TBTTM_Settings {
 							</td>
 						</tr>
 					<?php endforeach; ?>
+				</table>
+
+				<h2 class="title"><?php esc_html_e( 'Certificate', 'tbt-test-maker' ); ?></h2>
+				<p><?php esc_html_e( 'The picture behind every certificate: a JPG in this site\'s media library. The name, the test title, the score and the date are printed over it. Leave the field empty to use the default picture.', 'tbt-test-maker' ); ?></p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="tbttm_certificate_bg"><?php esc_html_e( 'Certificate background', 'tbt-test-maker' ); ?></label></th>
+						<td>
+							<input type="url" class="large-text" id="tbttm_certificate_bg" name="tbttm_certificate_bg"
+								value="<?php echo esc_attr( TBTTM_Certificate::background_url() ); ?>">
+							<?php $background = TBTTM_Certificate::background_path(); ?>
+							<?php if ( '' !== $background ) : ?>
+								<p class="description"><?php esc_html_e( 'Found on this server.', 'tbt-test-maker' ); ?></p>
+								<p class="description">
+									<?php
+									/* translators: %s: a file size, such as "412 KB". */
+									echo esc_html( sprintf( __( 'The picture is %s. Every certificate carries it whole, so each PDF is about that size.', 'tbt-test-maker' ), size_format( (int) filesize( $background ) ) ) );
+									?>
+								</p>
+							<?php else : ?>
+								<?php // wp-ui-text-notification is the admin's own red text, so no colour is written here. ?>
+								<p class="description"><span class="wp-ui-text-notification"><strong><?php esc_html_e( 'This file is not on this server, so certificates are switched off.', 'tbt-test-maker' ); ?></strong></span></p>
+							<?php endif; ?>
+							<?php if ( 'mbstring' === TBTTM_Certificate::problem() ) : ?>
+								<p class="description"><span class="wp-ui-text-notification"><strong><?php esc_html_e( 'This server\'s PHP has no mbstring extension, so certificates are switched off. Ask the host to turn mbstring on.', 'tbt-test-maker' ); ?></strong></span></p>
+							<?php elseif ( in_array( TBTTM_Certificate::problem(), array( 'library', 'font' ), true ) ) : ?>
+								<p class="description"><span class="wp-ui-text-notification"><strong><?php esc_html_e( 'A file the certificate needs is missing from the plugin, so certificates are switched off. Upload the plugin again.', 'tbt-test-maker' ); ?></strong></span></p>
+							<?php endif; ?>
+						</td>
+					</tr>
 				</table>
 
 				<?php submit_button(); ?>

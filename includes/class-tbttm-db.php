@@ -11,8 +11,9 @@
  *                             a snapshot of what they saw.
  *
  * Column names are a data contract: add columns, never rename them. Several
- * columns (certificate, email_result, guest_email) belong to later releases
- * and are created now so those releases need no schema change.
+ * columns were created in schema 1.0 for later releases (class and access in
+ * 0.2.0, certificate, email_result and guest_email in 0.4.0), so none of them
+ * needed a schema change.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -373,6 +374,8 @@ class TBTTM_DB {
 			'access'    => isset( $clean['access'] ) && 'open' === $clean['access'] ? 'open' : 'login',
 			'class_id'  => empty( $clean['class_id'] ) ? null : (int) $clean['class_id'],
 			'lesson_id' => empty( $clean['class_id'] ) || empty( $clean['lesson_id'] ) ? null : (int) $clean['lesson_id'],
+			'certificate'  => empty( $clean['certificate'] ) ? 0 : 1,
+			'email_result' => empty( $clean['email_result'] ) ? 0 : 1,
 		);
 	}
 
@@ -429,7 +432,8 @@ class TBTTM_DB {
 	/**
 	 * Copy a test and its questions as a new draft: "Title (copy)", a new
 	 * slug, no attempts. The questions are copied as stored. The copy keeps
-	 * the class and who can take it, but not the lesson.
+	 * the class, who can take it, and the certificate and email settings,
+	 * but not the lesson.
 	 *
 	 * @param object $row      Test row to copy.
 	 * @param int    $owner_id Owner of the copy.
@@ -458,6 +462,8 @@ class TBTTM_DB {
 				'pass_mark'  => null === $row->pass_mark ? null : (int) $row->pass_mark,
 				'access'     => 'open' === $row->access ? 'open' : 'login',
 				'class_id'   => empty( $row->class_id ) ? null : (int) $row->class_id,
+				'certificate'  => empty( $row->certificate ) ? 0 : 1,
+				'email_result' => empty( $row->email_result ) ? 0 : 1,
 				'created_at' => $now,
 				'updated_at' => $now,
 			)
@@ -664,10 +670,11 @@ class TBTTM_DB {
 	 *
 	 * @param int    $test_id    Test ID.
 	 * @param int    $user_id    User ID, or 0 for a guest.
-	 * @param string $guest_name The guest's name; '' for a user.
+	 * @param string $guest_name  The guest's name; '' for a user.
+	 * @param string $guest_email The guest's email, when the test emails results; '' otherwise.
 	 * @return object|null The new row.
 	 */
-	public static function insert_attempt( $test_id, $user_id, $guest_name = '' ) {
+	public static function insert_attempt( $test_id, $user_id, $guest_name = '', $guest_email = '' ) {
 		global $wpdb;
 		$now = self::now();
 		$ok  = $wpdb->insert(
@@ -676,6 +683,7 @@ class TBTTM_DB {
 				'test_id'    => (int) $test_id,
 				'user_id'    => (int) $user_id,
 				'guest_name' => (int) $user_id > 0 ? '' : (string) $guest_name,
+				'guest_email' => (int) $user_id > 0 ? '' : (string) $guest_email,
 				'token'      => bin2hex( random_bytes( 16 ) ),
 				'status'     => self::ATTEMPT_IN_PROGRESS,
 				'answers'    => '{}',
@@ -698,6 +706,29 @@ class TBTTM_DB {
 		global $wpdb;
 		$fields['updated_at'] = self::now();
 		return false !== $wpdb->update( self::attempts_table(), $fields, array( 'id' => (int) $id ) );
+	}
+
+	/**
+	 * Move an attempt from in progress to finished, and only from there. The
+	 * WHERE clause is the lock: when two finish requests arrive together,
+	 * the database lets exactly one of them change the row.
+	 *
+	 * @param int   $id     Attempt ID.
+	 * @param array $fields Column → value: the score, the snapshot, the status.
+	 * @return int|false 1 when this call finished the attempt; 0 when it was
+	 *                   not in progress any more; false on a database error.
+	 */
+	public static function finish_attempt( $id, array $fields ) {
+		global $wpdb;
+		$fields['updated_at'] = self::now();
+		return $wpdb->update(
+			self::attempts_table(),
+			$fields,
+			array(
+				'id'     => (int) $id,
+				'status' => self::ATTEMPT_IN_PROGRESS,
+			)
+		);
 	}
 
 	/**

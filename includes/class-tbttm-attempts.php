@@ -184,6 +184,8 @@ class TBTTM_Attempts {
 			'passed'      => null === $pass_mark ? null : $percent >= $pass_mark,
 			'review'      => is_array( $review ) ? array_values( $review ) : array(),
 			'finished_at' => (string) $attempt->finished_at,
+			// Whether a certificate can be downloaded for this attempt.
+			'certificate' => TBTTM_Certificate::available( $attempt, $test ),
 		);
 	}
 
@@ -207,6 +209,14 @@ class TBTTM_Attempts {
 	 * Finishing a finished attempt changes nothing and returns the stored
 	 * result, so a retried request after a lost response is harmless.
 	 *
+	 * The write happens only while the attempt is still in progress, and the
+	 * database decides who made it. When two finish requests arrive together
+	 * (a double click, or a retry racing the first), exactly one of them
+	 * moves the attempt to finished. That one fires `tbttm_attempt_finished`,
+	 * once, which is where the result email is queued. The other writes
+	 * nothing, fires nothing, and returns the result the first one stored:
+	 * never an error.
+	 *
 	 * @param object $attempt  Attempt row.
 	 * @param object $test     Test row.
 	 * @param mixed  $incoming Raw answers from the request.
@@ -221,7 +231,7 @@ class TBTTM_Attempts {
 		$answers   = self::merge( self::answers( $attempt ), $incoming, $questions, self::checked( $attempt ) );
 		$scored    = self::score( $answers, $questions );
 
-		$ok = TBTTM_DB::update_attempt(
+		$won = TBTTM_DB::finish_attempt(
 			(int) $attempt->id,
 			array(
 				'answers'     => wp_json_encode( (object) $answers ),
@@ -233,10 +243,26 @@ class TBTTM_Attempts {
 				'finished_at' => TBTTM_DB::now(),
 			)
 		);
-		if ( ! $ok ) {
+		// Whatever happened, the row itself says where the attempt stands.
+		$stored = TBTTM_DB::get_attempt( (int) $attempt->id );
+		if ( ! $stored || TBTTM_DB::ATTEMPT_FINISHED !== $stored->status ) {
+			// The write failed and nobody else finished it: nothing is
+			// lost, the page keeps the answers and tries again.
 			return new WP_Error( 'tbttm_save_failed', __( 'The result could not be saved. Try again.', 'tbt-test-maker' ), array( 'status' => 500 ) );
 		}
 
-		return self::result( TBTTM_DB::get_attempt( (int) $attempt->id ), $test );
+		if ( $won ) {
+			// This request moved the attempt to finished. Extras hang here
+			// (the result email); a failure in one must never undo a finish.
+			try {
+				do_action( 'tbttm_attempt_finished', $stored, $test );
+			} catch ( Throwable $e ) {
+				if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
+					error_log( 'TBT Test Maker: after finishing: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				}
+			}
+		}
+
+		return self::result( $stored, $test );
 	}
 }

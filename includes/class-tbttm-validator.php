@@ -18,6 +18,8 @@
  *   access            'login' or 'open'
  *   class_id          int > 0, or null
  *   lesson_id         int > 0, or null; always null without a class
+ *   certificate       bool: true only for a real true
+ *   email_result      bool: true only for a real true
  *   questions         list of { id (0 = new), body, options[], correct (int|null) }
  *
  * The class uses only a handful of WordPress functions, so
@@ -74,6 +76,9 @@ class TBTTM_Validator {
 			'access'    => $access,
 			'class_id'  => $class_id,
 			'lesson_id' => $lesson_id,
+			// Both off unless the builder sends a real boolean true.
+			'certificate'  => isset( $raw['certificate'] ) && true === $raw['certificate'],
+			'email_result' => isset( $raw['email_result'] ) && true === $raw['email_result'],
 			'questions' => $questions,
 		);
 	}

@@ -134,6 +134,43 @@
 		} );
 	}
 
+	/**
+	 * Fetch a PDF from a REST route. Resolves with { blob, name }; rejects
+	 * on anything that is not a PDF. An expired nonce is refreshed once.
+	 */
+	function fetchPdf( url, retried ) {
+		return fetch( url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': CFG.nonce || '' } } ).then( function ( res ) {
+			var type = res.headers.get( 'Content-Type' ) || '';
+			if ( res.ok && type.indexOf( 'application/pdf' ) === 0 ) {
+				var match = /filename="?([^";]+)"?/i.exec( res.headers.get( 'Content-Disposition' ) || '' );
+				return res.blob().then( function ( blob ) {
+					return { blob: blob, name: match ? match[ 1 ] : 'certificate.pdf' };
+				} );
+			}
+			return res.json().catch( function () { return {}; } ).then( function ( data ) {
+				if ( data && data.code === 'rest_cookie_invalid_nonce' && ! retried ) {
+					return refreshNonce().then( function () {
+						return fetchPdf( url, true );
+					} );
+				}
+				throw new Error( 'certificate' );
+			} );
+		} );
+	}
+
+	/** Hand a file to the browser as a download. */
+	function saveFile( blob, name ) {
+		var url = window.URL.createObjectURL( blob );
+		var a = document.createElement( 'a' );
+		a.href = url;
+		a.download = name;
+		a.style.display = 'none';
+		document.body.appendChild( a );
+		a.click();
+		document.body.removeChild( a );
+		setTimeout( function () { window.URL.revokeObjectURL( url ); }, 60000 );
+	}
+
 	/* ---------------------------------------------------------------------
 	 * Library
 	 * ------------------------------------------------------------------- */
@@ -549,7 +586,9 @@
 		var del = null;         // the attempt being asked about
 		var delBusy = false;
 		var delError = '';
-		var answers = {};       // attempt ID → { state: 'loading' | 'ok' | 'error', review }
+		var answers = {};       // attempt ID → { state: 'loading' | 'ok' | 'error', review, email, certificate }
+		var certBusy = false;
+		var certError = null;   // the attempt whose certificate failed
 
 		function load() {
 			loadError = '';
@@ -584,7 +623,7 @@
 		function fetchAnswers( id ) {
 			answers[ id ] = { state: 'loading' };
 			api( 'GET', 'tests/' + testId + '/attempts/' + id ).then( function ( res ) {
-				answers[ id ] = { state: 'ok', review: Array.isArray( res.review ) ? res.review : [] };
+				answers[ id ] = { state: 'ok', review: Array.isArray( res.review ) ? res.review : [], email: res.email || '', certificate: !! res.certificate };
 				paintTable();
 			}, function () {
 				answers[ id ] = { state: 'error' };
@@ -597,6 +636,7 @@
 			showAll = false;
 			del = null;
 			delError = '';
+			certError = null;
 			if ( open !== null && ! answers[ open ] ) {
 				fetchAnswers( open );
 			}
@@ -632,7 +672,13 @@
 					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-act="del-no"' + ( delBusy ? ' disabled' : '' ) + '>Cancel</button>'
 					+ ( delError ? '<span class="tbttm-note tbttm-note--error">' + esc( delError ) + '</span>' : '' ) + '</span>';
 			} else {
-				html += '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="del" data-att="' + a.id + '">Remove attempt</button>';
+				html += ( got.certificate
+					? '<button type="button" class="tbttm-linkbtn" data-act="cert" data-att="' + a.id + '"' + ( certBusy ? ' disabled' : '' ) + '>Certificate</button>'
+					: '' )
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="del" data-att="' + a.id + '">Remove attempt</button>';
+			}
+			if ( certError === a.id ) {
+				html += '<span class="tbttm-note tbttm-note--error tbttm-answers__note" role="alert">The certificate could not be made. Try again in a moment.</span>';
 			}
 			html += '</div><ul class="tbttm-alist">';
 			got.review.forEach( function ( item, i ) {
@@ -659,7 +705,9 @@
 			list.forEach( function ( a ) {
 				var isOpen = open === a.id;
 				html += '<tr class="tbttm-rt__att' + ( isOpen ? ' is-open' : '' ) + '" data-att="' + a.id + '">'
-					+ '<td class="tbttm-rt__name">' + esc( a.name ) + ( a.guest ? '<span class="tbttm-rt__guest">no login</span>' : '' ) + '</td>'
+					+ '<td class="tbttm-rt__name">' + esc( a.name ) + ( a.guest ? '<span class="tbttm-rt__guest">no login</span>' : '' )
+					// A guest's email, once their attempt is open and loaded.
+					+ ( isOpen && answers[ a.id ] && answers[ a.id ].email ? '<span class="tbttm-rt__email">' + esc( answers[ a.id ].email ) + '</span>' : '' ) + '</td>'
 					+ '<td>' + esc( a.finished ) + '</td>'
 					+ '<td class="tbttm-rt__num">' + a.score + ' / ' + a.total + ' · ' + a.percent + '%'
 					+ '<span class="tbttm-rmeter" aria-hidden="true"><i style="width:' + Math.max( 0, Math.min( 100, +a.percent || 0 ) ) + '%"></i></span></td>'
@@ -748,6 +796,27 @@
 			paintTable();
 		}
 
+		/* ----- the certificate ----- */
+
+		/** The same PDF the student downloads, for the test's owner. */
+		function downloadCertificate( id ) {
+			if ( certBusy ) {
+				return;
+			}
+			certBusy = true;
+			certError = null;
+			paintTable();
+			fetchPdf( CFG.rest + 'tests/' + testId + '/attempts/' + id + '/certificate', false ).then( function ( file ) {
+				certBusy = false;
+				paintTable();
+				saveFile( file.blob, file.name );
+			}, function () {
+				certBusy = false;
+				certError = id;
+				paintTable();
+			} );
+		}
+
 		/* ----- removing ----- */
 
 		function remove( id ) {
@@ -821,6 +890,9 @@
 					case 'all':
 						showAll = ! showAll;
 						paintTable();
+						break;
+					case 'cert':
+						downloadCertificate( id );
 						break;
 					case 'del':
 						del = id;
@@ -913,6 +985,8 @@
 			savedAccess: src && src.access === 'open' ? 'open' : 'login',
 			class_id: src && src.class_id ? +src.class_id : 0,
 			lesson_id: src && src.lesson_id ? +src.lesson_id : 0,
+			certificate: !! ( src && src.certificate ),
+			email_result: !! ( src && src.email_result ),
 			questions: src ? src.questions.map( mkq ) : [],
 		};
 		// The teacher's own classes, printed by the server. Without TBT Notes,
@@ -1110,6 +1184,13 @@
 			} );
 		}
 
+		/** The Certificate hint follows the pass mark: who passes, or who finishes. */
+		function certHint() {
+			return String( d.pass_mark ).trim()
+				? 'Students who pass can download a certificate with their name and score.'
+				: 'Students who finish can download a certificate with their name and score.';
+		}
+
 		function render( focusId ) {
 			var pub = d.status === 'published';
 			var n = d.questions.length;
@@ -1141,7 +1222,7 @@
 
 			// 2. Settings
 			html += '<section class="tbttm-stage tbttm-stage--numbered">'
-				+ stageHead( 2, 'Settings', 'Who the test is for, when students see the answers, what counts as a pass, and the bull pictures.' )
+				+ stageHead( 2, 'Settings', 'Who the test is for, when students see the answers, what counts as a pass, the bull pictures, and what students get when they finish.' )
 				+ '<div class="tbttm-settings">'
 				+ classFieldHtml()
 				+ '<div class="tbttm-field"><span class="tbttm-field__label" id="tbttm-acc-label">Who can take it</span>'
@@ -1160,6 +1241,15 @@
 				+ '<div class="tbttm-field"><span class="tbttm-field__label">Bull pictures</span>'
 				+ '<label class="tbttm-switch" for="tbttm-f-bulls"><input id="tbttm-f-bulls" type="checkbox"' + ( d.bulls ? ' checked' : '' ) + '><span>' + ( d.bulls ? 'On' : 'Off' ) + '</span></label>'
 				+ '<span class="tbttm-hint">At the start, in the middle, near the end and at the end.</span></div>'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label">Certificate</span>'
+				+ '<label class="tbttm-switch" for="tbttm-f-cert"><input id="tbttm-f-cert" type="checkbox"' + ( d.certificate ? ' checked' : '' ) + '><span>' + ( d.certificate ? 'On' : 'Off' ) + '</span></label>'
+				+ '<span class="tbttm-hint" data-tbttm-cert-hint>' + certHint() + '</span></div>'
+				+ '<div class="tbttm-field"><span class="tbttm-field__label">Email the result</span>'
+				+ '<label class="tbttm-switch" for="tbttm-f-mail"><input id="tbttm-f-mail" type="checkbox"' + ( d.email_result ? ' checked' : '' ) + '><span>' + ( d.email_result ? 'On' : 'Off' ) + '</span></label>'
+				+ '<span class="tbttm-hint">' + ( d.email_result
+					? 'Students get their score by email when they finish' + ( d.certificate ? ', with the certificate' : '' ) + '.'
+						+ ( d.access === 'open' ? ' People without a login type their email before they start.' : '' )
+					: 'Results are always saved for you. Turn this on to send them to the student too.' ) + '</span></div>'
 				+ '</div></section>';
 
 			// 3. Questions
@@ -1215,6 +1305,8 @@
 				bulls: d.bulls,
 				pass_mark: d.pass_mark.trim(),
 				access: d.access,
+				certificate: !! d.certificate,
+				email_result: !! d.email_result,
 				status: status,
 				questions: d.questions.map( function ( q ) {
 					return { id: q.id || 0, body: q.body, options: q.options, correct: q.correct };
@@ -1280,6 +1372,8 @@
 				d.pass_mark = res.pass_mark ? String( res.pass_mark ) : '';
 				d.access = res.access === 'open' ? 'open' : 'login';
 				d.savedAccess = d.access;
+				d.certificate = !! res.certificate;
+				d.email_result = !! res.email_result;
 				if ( CLASSES.length ) {
 					lessonSeq++;
 					d.class_id = res.class_id ? +res.class_id : 0;
@@ -1472,6 +1566,13 @@
 			if ( t.dataset.f ) {
 				d[ t.dataset.f ] = t.value;
 				touch();
+				if ( t.dataset.f === 'pass_mark' ) {
+					// Typing a pass mark changes who the certificate is for.
+					var hint = root.querySelector( '[data-tbttm-cert-hint]' );
+					if ( hint ) {
+						hint.textContent = certHint();
+					}
+				}
 			}
 		} );
 
@@ -1517,6 +1618,12 @@
 			}
 			if ( t.id === 'tbttm-f-bulls' ) {
 				d.bulls = t.checked;
+				touch();
+				render( t.id );
+				return;
+			}
+			if ( t.id === 'tbttm-f-cert' || t.id === 'tbttm-f-mail' ) {
+				d[ t.id === 'tbttm-f-cert' ? 'certificate' : 'email_result' ] = t.checked;
 				touch();
 				render( t.id );
 				return;

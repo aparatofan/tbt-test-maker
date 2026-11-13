@@ -144,6 +144,26 @@ class TBTTM_Rest {
 
 		register_rest_route(
 			self::NS,
+			'/tests/(?P<id>\d+)/attempts/(?P<attempt>\d+)/certificate',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'permission_callback' => $teacher,
+				'callback'            => array( $this, 'get_attempt_certificate' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/attempts/(?P<token>[a-f0-9]{32})/certificate',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'permission_callback' => $result,
+				'callback'            => array( $this, 'get_certificate' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/classes/(?P<id>\d+)/lessons',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -428,6 +448,8 @@ class TBTTM_Rest {
 			'access'    => 'open' === $row->access ? 'open' : 'login',
 			'class_id'  => $class_id,
 			'lesson_id' => $class_id ? (int) $row->lesson_id : 0,
+			'certificate'  => (bool) (int) $row->certificate,
+			'email_result' => (bool) (int) $row->email_result,
 			// The saved class's lessons, so the builder opens with the lesson
 			// in place and needs no request to show it.
 			'lessons'   => $class_id ? self::lessons( $class_id ) : array(),
@@ -692,10 +714,79 @@ class TBTTM_Rest {
 		$review = json_decode( (string) $attempt->review, true );
 		return rest_ensure_response(
 			array(
-				'id'     => (int) $attempt->id,
-				'review' => is_array( $review ) ? array_values( $review ) : array(),
+				'id'          => (int) $attempt->id,
+				'review'      => is_array( $review ) ? array_values( $review ) : array(),
+				// A guest's email, for the owner only; shown nowhere else.
+				'email'       => (int) $attempt->user_id > 0 ? '' : (string) $attempt->guest_email,
+				'certificate' => TBTTM_Certificate::available( $attempt, $test ),
 			)
 		);
+	}
+
+	/**
+	 * One attempt's certificate, for the test's owner. The same PDF the
+	 * student downloads, behind the same checks as the other Results routes.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_Error Only on failure; a PDF ends the request itself.
+	 */
+	public function get_attempt_certificate( WP_REST_Request $request ) {
+		$test = TBTTM_DB::get_owned_test( (int) $request['id'], get_current_user_id() );
+		if ( ! $test ) {
+			return self::not_found();
+		}
+		$attempt = TBTTM_DB::get_attempt( (int) $request['attempt'] );
+		if ( ! $attempt || (int) $attempt->test_id !== (int) $test->id ) {
+			return self::no_such_attempt();
+		}
+		return self::serve_certificate( self::certificate_for( $attempt, $test ) );
+	}
+
+	/**
+	 * The certificate an attempt earned, ready to send, or why there is none.
+	 *
+	 * @param object|null $attempt Attempt row.
+	 * @param object|null $test    Test row.
+	 * @return array{pdf: string, name: string}|WP_Error
+	 */
+	public static function certificate_for( $attempt, $test ) {
+		if ( ! $attempt || ! $test || ! TBTTM_Certificate::available( $attempt, $test ) ) {
+			return new WP_Error( 'tbttm_no_certificate', __( 'That certificate is not available.', 'tbt-test-maker' ), array( 'status' => 404 ) );
+		}
+		$pdf = TBTTM_Certificate::pdf( $attempt, $test );
+		if ( '' === $pdf ) {
+			return new WP_Error( 'tbttm_certificate_failed', __( 'The certificate could not be made. Try again in a moment.', 'tbt-test-maker' ), array( 'status' => 500 ) );
+		}
+		return array(
+			'pdf'  => $pdf,
+			'name' => TBTTM_Certificate::filename( $test ),
+		);
+	}
+
+	/**
+	 * Send a PDF as a download and end the request. A REST response is JSON,
+	 * so the file is written here directly, with headers that keep every
+	 * cache from holding a copy.
+	 *
+	 * @param array|WP_Error $certificate From certificate_for().
+	 * @return WP_Error Only when there is no PDF to send.
+	 */
+	private static function serve_certificate( $certificate ) {
+		if ( is_wp_error( $certificate ) ) {
+			return $certificate;
+		}
+		while ( ob_get_level() > 0 ) {
+			ob_end_clean();
+		}
+		nocache_headers();
+		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		header( 'X-LiteSpeed-Cache-Control: no-cache' );
+		header( 'Content-Type: application/pdf' );
+		header( 'Content-Disposition: attachment; filename="' . $certificate['name'] . '"' );
+		header( 'Content-Length: ' . strlen( $certificate['pdf'] ) );
+		header( 'X-Content-Type-Options: nosniff' );
+		echo $certificate['pdf']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary PDF.
+		exit;
 	}
 
 	/**
@@ -1005,7 +1096,7 @@ class TBTTM_Rest {
 
 	/**
 	 * Start a guest's attempt on an open test: `name` is required and stored
-	 * with user_id = 0. Always a new attempt; a guest carries on with an
+	 * with user_id = 0, and `email` too when the test emails results. Always a new attempt; a guest carries on with an
 	 * earlier one by holding its token, not by asking here.
 	 *
 	 * @param WP_REST_Request $request   Request.
@@ -1027,6 +1118,17 @@ class TBTTM_Rest {
 			return new WP_Error( 'tbttm_no_name', __( 'Type your name to start.', 'tbt-test-maker' ), array( 'status' => 400 ) );
 		}
 
+		// A test that emails results needs somewhere to send a guest's. With
+		// the setting off, an email sent anyway is ignored and not stored.
+		$email = '';
+		if ( ! empty( $test->email_result ) ) {
+			$raw_email = $request->get_param( 'email' );
+			$email     = is_scalar( $raw_email ) ? sanitize_email( trim( (string) $raw_email ) ) : '';
+			if ( '' === $email || ! is_email( $email ) || strlen( $email ) > 190 ) {
+				return new WP_Error( 'tbttm_no_email', __( 'Type your email to start.', 'tbt-test-maker' ), array( 'status' => 400 ) );
+			}
+		}
+
 		// A whole class may share one school address, so the limit is generous.
 		$key    = 'tbttm_gs_' . md5( (int) $test->id . '|' . self::client_ip() );
 		$now    = time();
@@ -1045,7 +1147,7 @@ class TBTTM_Rest {
 			);
 		}
 
-		$attempt = TBTTM_DB::insert_attempt( (int) $test->id, 0, $name );
+		$attempt = TBTTM_DB::insert_attempt( (int) $test->id, 0, $name, $email );
 		if ( ! $attempt ) {
 			return new WP_Error( 'tbttm_save_failed', __( 'The test could not be started. Try again.', 'tbt-test-maker' ), array( 'status' => 500 ) );
 		}
@@ -1191,6 +1293,23 @@ class TBTTM_Rest {
 			return new WP_Error( 'tbttm_no_result', __( 'That result is not available.', 'tbt-test-maker' ), array( 'status' => 404 ) );
 		}
 		return rest_ensure_response( TBTTM_Attempts::result( $attempt, TBTTM_DB::get_test( (int) $attempt->test_id ) ) );
+	}
+
+	/**
+	 * The certificate of a finished attempt, for its owner, as a PDF. The
+	 * access rule is the result's: a guest's token in the URL is the
+	 * credential; a user's attempt needs that user logged in.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_Error Only on failure; a PDF ends the request itself.
+	 */
+	public function get_certificate( WP_REST_Request $request ) {
+		$attempt = TBTTM_DB::get_attempt_by_token( (string) $request['token'] );
+		$mine    = $attempt && ( (int) $attempt->user_id <= 0 || (int) $attempt->user_id === get_current_user_id() );
+		if ( ! $mine ) {
+			return self::certificate_for( null, null );
+		}
+		return self::serve_certificate( self::certificate_for( $attempt, TBTTM_DB::get_test( (int) $attempt->test_id ) ) );
 	}
 
 	/**

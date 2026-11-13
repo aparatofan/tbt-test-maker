@@ -13,6 +13,9 @@ class TBTTM_Urls {
 	/** Query parameter carrying a test's slug on the student page. */
 	const TEST_PARAM = 'test';
 
+	/** Query parameter carrying a result's token on the student page. */
+	const RESULT_PARAM = 'result';
+
 	/** Query parameter opening a test in the builder. */
 	const EDIT_PARAM = 'tbttm_edit';
 
@@ -70,6 +73,23 @@ class TBTTM_Urls {
 			return '';
 		}
 		return add_query_arg( self::TEST_PARAM, rawurlencode( (string) $slug ), $base );
+	}
+
+	/**
+	 * Link to the Student page with one stored result showing, as the result
+	 * email's "See my answers" uses it: {student page}?test={slug}&result={token}.
+	 * Always the Student page, also for a test embedded somewhere else.
+	 *
+	 * @param string $slug  Test slug.
+	 * @param string $token Attempt token.
+	 * @return string '' when no Student page is set.
+	 */
+	public static function result_url( $slug, $token ) {
+		$url = self::test_url( $slug );
+		if ( '' === $url || ! preg_match( '/^[a-f0-9]{32}$/', (string) $token ) ) {
+			return '';
+		}
+		return add_query_arg( self::RESULT_PARAM, (string) $token, $url );
 	}
 
 	/**
