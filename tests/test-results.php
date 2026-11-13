@@ -17,6 +17,7 @@
 error_reporting( E_ALL );
 define( 'ABSPATH', __DIR__ . '/' );
 
+require __DIR__ . '/../includes/class-tbttm-gaps.php';
 require __DIR__ . '/../includes/class-tbttm-results.php';
 
 $pass = 0;
@@ -245,6 +246,61 @@ same( TBTTM_Results::seconds( '2026-11-13 23:59:30', '2026-11-14 00:00:10' ), 40
 same( TBTTM_Results::seconds( '2026-11-13 10:00:00', '2026-11-13 10:00:00' ), 0, 'time: zero' );
 same( TBTTM_Results::seconds( '2026-11-13 10:00:00', '2026-11-13 09:00:00' ), null, 'time: the wrong way round is unknown' );
 same( TBTTM_Results::seconds( '2026-11-13 10:00:00', '' ), null, 'time: a missing end is unknown' );
+
+/* ---------- fill in the gaps ---------- */
+
+/** A gap question of the test as it is now. */
+function gq( $id, $body ) {
+	return array( 'id' => $id, 'type' => 'gap', 'body' => $body, 'options' => array(), 'correct' => null, 'gaps' => TBTTM_Gaps::parse( $body ) );
+}
+/** A gap question's snapshot entry: the verdict on each gap. */
+function ge( $id, $body, array $right ) {
+	return array( 'id' => $id, 'type' => 'gap', 'body' => $body, 'gaps' => TBTTM_Gaps::parse( $body ), 'given' => array_fill( 0, count( $right ), 'x' ), 'right' => $right );
+}
+$far  = "Pete: The film was long.\nAlita: As [far] as I'm [concerned|aware], it was too long.\n\nComplete the phrase.";
+$dont = "Really? I [don't|do not] think so.";
+$gtest = array( q( 1, 'One' ), gq( 2, $far ), gq( 3, $dont ) );
+
+// Question 2: 3 right gaps of 6. Question 3: 2 of 3. Question 1: 3 of 3.
+$greviews = array(
+	array( e( 1, 'One', 0 ), ge( 2, $far, array( true, false ) ), ge( 3, $dont, array( true ) ) ),
+	array( e( 1, 'One', 0 ), ge( 2, $far, array( true, true ) ), ge( 3, $dont, array( false ) ) ),
+	array( e( 1, 'One', 0 ), ge( 2, $far, array( false, false ) ), ge( 3, $dont, array( true ) ) ),
+);
+$h = TBTTM_Results::hardest( $gtest, $greviews );
+same( numbers( $h ), array( 2, 3, 1 ), 'gap: questions ranked by their share of right gaps' );
+same( percents( $h ), array( 50, 67, 100 ), 'gap: the share is right gaps out of all gaps, over every attempt' );
+same( $h[0]['line'], "Alita: As _____ as I'm _____, it was too long.", 'gap: the line is the first line with a gap, with _____' );
+same( $h[0]['correct_text'], "Alita: As far as I'm concerned, it was too long.", 'gap: the correct text is that line with the first accepted answers' );
+same( array( $h[1]['line'], $h[1]['correct_text'] ), array( 'Really? I _____ think so.', "Really? I don't think so." ), 'gap: a one-line question' );
+same( array( $h[2]['line'], $h[2]['correct_text'] ), array( 'One', 'yes' ), 'gap: a multiple choice question beside them reads as before' );
+
+// The verdict is the snapshot's, even if the accepted answers changed since.
+$edited = array( q( 1, 'One' ), gq( 2, 'As [near] as I [know].' ), gq( 3, $dont ) );
+same( percents( TBTTM_Results::hardest( $edited, $greviews ) ), array( 50, 67, 100 ), 'gap: editing a question does not re-mark old attempts' );
+
+// Old and new entries together: no id, no type, and typed gap entries.
+$mix = array(
+	array( old( 'One', 1 ), ge( 2, $far, array( true, true ) ) ),
+	array( e( 1, 'One', 0 ), ge( 2, $far, array( false, true ) ), ge( 3, $dont, array( false ) ) ),
+	array( old( 'One', 0 ) ),
+	array( e( 1, 'One', 1 ), ge( 3, $dont, array( false ) ) ),
+);
+$h = TBTTM_Results::hardest( $gtest, $mix );
+same( numbers( $h ), array( 3, 1, 2 ), 'old and new: entries without id or type count beside gap entries' );
+same( percents( $h ), array( 0, 50, 75 ), 'old and new: each question over the attempts that hold it' );
+
+// A question that changed type: entries of the other type are left out.
+$was_choice = array( array( e( 2, 'Old text', 0 ) ), array( e( 2, 'Old text', 0 ) ), array( ge( 2, $far, array( true, false ) ) ) );
+$h = TBTTM_Results::hardest( array( gq( 2, $far ) ), $was_choice );
+same( percents( $h ), array( 50 ), 'type changed: a gap question is rated on its gap entries only' );
+$was_gap = array( array( ge( 1, $far, array( true, true ) ) ), array( ge( 1, $far, array( true, true ) ) ), array( e( 1, 'One', 1 ) ) );
+same( percents( TBTTM_Results::hardest( array( q( 1, 'One' ) ), $was_gap ) ), array( 0 ), 'type changed: a multiple choice question is rated on its choice entries only' );
+same( TBTTM_Results::hardest( array( gq( 2, $far ) ), array( array( e( 2, 'x', 0 ) ), array( e( 2, 'x', 0 ) ), array( e( 2, 'x', 0 ) ) ) ), array(), 'type changed: with no entry of its type a question is left out' );
+
+// A gap entry with broken verdicts counts nothing and breaks nothing.
+$broken = array( array( array( 'id' => 2, 'type' => 'gap', 'right' => 'yes' ) ), array( ge( 2, $far, array( true, true ) ) ), array( ge( 2, $far, array( true, true ) ) ) );
+same( percents( TBTTM_Results::hardest( array( gq( 2, $far ) ), $broken ) ), array( 100 ), 'gap: an entry without verdicts is ignored' );
 
 echo "{$pass} passed, {$fail} failed\n";
 exit( $fail ? 1 : 0 );
