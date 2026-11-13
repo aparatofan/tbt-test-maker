@@ -1,10 +1,11 @@
 /**
  * TBT Test Maker — the teacher page ([tbt_test_maker]).
  *
- * Two views on one page, as in Translation Drill: the library (painted by the
- * server; this script adds search, Copy link and Delete) and the builder
- * (built here from the test's JSON). Follows docs/prototypes/teacher.html,
- * minus the parts that belong to later releases.
+ * Three views on one page: the library (painted by the server; this script
+ * adds search, Copy link and Delete), the builder (built here from the test's
+ * JSON) and a test's Results (built here from GET /tests/{id}/results).
+ * Follows docs/prototypes/teacher.html, minus the parts that belong to later
+ * releases.
  */
 ( function () {
 	'use strict';
@@ -27,6 +28,28 @@
 
 	function plural( n, one, many ) {
 		return n + ' ' + ( n === 1 ? one : many );
+	}
+
+	/** Case- and accent-insensitive form of a string, for searching names. */
+	function fold( text ) {
+		var t = String( text == null ? '' : text );
+		if ( t.normalize ) {
+			t = t.normalize( 'NFD' ).replace( /[\u0300-\u036f]/g, '' );
+		}
+		return t.replace( /ł/g, 'l' ).replace( /Ł/g, 'L' ).toLowerCase().trim();
+	}
+
+	/** "14 questions · B2 Tuesday group · Logged-in students · Pass mark 70%", as spans or as one line. */
+	function factsOf( t ) {
+		var facts = [ plural( t.questions, 'question', 'questions' ) ];
+		if ( CFG.notes ) {
+			facts.push( t.class_title || 'Not in a class' );
+		}
+		facts.push( t.access === 'open' ? 'Anyone with the link' : 'Logged-in students' );
+		if ( t.pass_mark ) {
+			facts.push( 'Pass mark ' + t.pass_mark + '%' );
+		}
+		return facts;
 	}
 
 	function listNumbers( nums ) {
@@ -189,19 +212,21 @@
 	 */
 	function rowHtml( t ) {
 		var pub = t.status === 'published';
+		// Results exist once someone has finished the test.
+		var results = t.attempts > 0 && t.results_url ? t.results_url : '';
 		return '<article class="tbttm-test-row" data-tbttm-card data-id="' + t.id + '" data-attempts="' + t.attempts + '"'
 			+ ' data-title="' + esc( t.title ) + '" data-slug="' + esc( t.slug ) + '" data-url="' + esc( t.url ) + '" data-status="' + esc( t.status ) + '" data-access="' + esc( t.access ) + '">'
 			+ '<div class="tbttm-test-row__main"><h3 class="tbttm-test-row__title">' + esc( t.title ) + '</h3>'
 			+ '<p class="tbttm-test-row__meta"><span class="tbttm-badge ' + ( pub ? 'tbttm-badge--published' : 'tbttm-badge--draft' ) + '">' + ( pub ? 'Published' : 'Draft' ) + '</span>'
-			+ '<span>' + plural( t.questions, 'question', 'questions' ) + '</span>'
-			+ ( CFG.notes ? '<span>' + ( t.class_title ? esc( t.class_title ) : 'Not in a class' ) + '</span>' : '' )
-			+ '<span>' + ( t.access === 'open' ? 'Anyone with the link' : 'Logged-in students' ) + '</span>'
-			+ ( t.pass_mark ? '<span>Pass mark ' + t.pass_mark + '%</span>' : '' )
-			+ ( pub ? '<span>' + plural( t.attempts, 'attempt', 'attempts' ) + '</span>' : '' )
+			+ factsOf( t ).map( function ( f ) { return '<span>' + esc( f ) + '</span>'; } ).join( '' )
+			+ ( pub ? '<span>' + ( results
+				? '<a class="tbttm-test-row__count" href="' + esc( results ) + '" data-tbttm-results-link data-href="' + esc( results ) + '">' + plural( t.attempts, 'attempt', 'attempts' ) + '</a>'
+				: plural( t.attempts, 'attempt', 'attempts' ) ) + '</span>' : '' )
 			+ ( t.edited ? '<span>Edited ' + esc( t.edited ) + '</span>' : '' ) + '</p></div>'
 			+ '<div class="tbttm-test-row__actions" data-tbttm-actions>'
 			+ ( pub && t.url ? '<a class="tbttm-rowbtn" href="' + esc( t.url ) + '" target="_blank" rel="noopener" aria-label="Open ' + esc( t.title ) + ' in a new tab">Open</a>' : '' )
 			+ '<a class="tbttm-rowbtn" href="' + esc( t.edit_url ) + '">Edit</a>'
+			+ ( results ? '<a class="tbttm-rowbtn" href="' + esc( results ) + '" data-tbttm-results-link data-href="' + esc( results ) + '">Results</a>' : '' )
 			+ '<button type="button" class="tbttm-rowbtn" data-tbttm-share aria-expanded="false">Share</button>'
 			+ '<button type="button" class="tbttm-rowbtn" data-tbttm-duplicate>Duplicate</button>'
 			+ '<button type="button" class="tbttm-rowbtn tbttm-rowbtn--danger" data-tbttm-delete>Delete</button>'
@@ -250,19 +275,40 @@
 			return kept || ! chosen;
 		}
 
-		/** Keep the class choice in the address, so a reload or a shared link keeps it. */
-		function syncUrl() {
-			if ( ! classSelect || ! CFG.classParam || ! window.history || ! window.history.replaceState ) {
-				return;
-			}
-			try {
-				var url = new URL( window.location.href );
-				if ( classSelect.value ) {
-					url.searchParams.set( CFG.classParam, classSelect.value );
+		/** Write the filter into a URL: the class and the search, each only when set. */
+		function withFilter( href ) {
+			var url = new URL( href, window.location.href );
+			var cls = classSelect ? classSelect.value : '';
+			var term = input ? input.value.trim() : '';
+			if ( CFG.classParam ) {
+				if ( cls ) {
+					url.searchParams.set( CFG.classParam, cls );
 				} else {
 					url.searchParams.delete( CFG.classParam );
 				}
-				window.history.replaceState( null, '', url.toString() );
+			}
+			if ( CFG.searchParam ) {
+				if ( term ) {
+					url.searchParams.set( CFG.searchParam, term );
+				} else {
+					url.searchParams.delete( CFG.searchParam );
+				}
+			}
+			return url.toString();
+		}
+
+		/**
+		 * Keep the filter in the address, so a reload or a shared link keeps
+		 * it, and on every Results link, so "Back to tests" returns to it.
+		 */
+		function syncUrl() {
+			try {
+				root.querySelectorAll( '[data-tbttm-results-link]' ).forEach( function ( a ) {
+					a.href = withFilter( a.getAttribute( 'data-href' ) );
+				} );
+				if ( window.history && window.history.replaceState ) {
+					window.history.replaceState( null, '', withFilter( window.location.href ) );
+				}
 			} catch ( e ) {
 				// The filter still works; only the address is left behind.
 			}
@@ -287,6 +333,7 @@
 				}
 				total = res.total;
 				grid.innerHTML = res.tests.map( rowHtml ).join( '' );
+				syncUrl();
 				if ( term || cls ) {
 					summary.innerHTML = res.tests.length + ' of ' + plural( total, 'test', 'tests' )
 						+ ' · <button type="button" class="tbttm-linkbtn" data-tbttm-clear>Clear filters</button>';
@@ -461,6 +508,347 @@
 				} );
 			}
 		} );
+	}
+
+
+	/* ---------------------------------------------------------------------
+	 * Results
+	 * ------------------------------------------------------------------- */
+
+	/** "12 min 40 s"; "over 3 h" when the student left and came back. */
+	function fmtTime( seconds ) {
+		if ( seconds === null || seconds === undefined ) {
+			return '';
+		}
+		if ( seconds > 10800 ) {
+			return 'over 3 h';
+		}
+		var m = Math.floor( seconds / 60 );
+		return ( m ? m + ' min ' : '' ) + ( seconds % 60 ) + ' s';
+	}
+
+	/** The last non-empty line of a question's text. */
+	function lastLine( body ) {
+		var lines = String( body == null ? '' : body ).split( '\n' ).filter( function ( l ) { return l.trim(); } );
+		return lines.length ? lines[ lines.length - 1 ].trim() : '';
+	}
+
+	/**
+	 * A test's Results: the stats, the attempts and the hardest questions.
+	 * Everything shown comes from stored snapshots, for the test's owner
+	 * only. Names and answers are always escaped: a guest typed that name.
+	 */
+	function Results( root ) {
+		var testId = root.dataset.id;
+		var data = null;        // GET /tests/{id}/results
+		var loadError = '';
+		var search = '';
+		var best = false;
+		var open = null;        // the attempt whose answers are showing
+		var showAll = false;    // every answer, or the wrong ones only
+		var del = null;         // the attempt being asked about
+		var delBusy = false;
+		var delError = '';
+		var answers = {};       // attempt ID → { state: 'loading' | 'ok' | 'error', review }
+
+		function load() {
+			loadError = '';
+			api( 'GET', 'tests/' + testId + '/results' ).then( function ( res ) {
+				data = res;
+				render();
+			}, function ( err ) {
+				loadError = err.message;
+				render();
+			} );
+		}
+
+		/** The attempts after the search and "Best attempt per student". */
+		function shown() {
+			var term = fold( search );
+			var list = data.attempts.filter( function ( a ) {
+				return ! term || fold( a.name ).indexOf( term ) >= 0;
+			} );
+			if ( best ) {
+				// The list is newest first, so on a tie the newest is kept.
+				var top = {};
+				list.forEach( function ( a ) {
+					if ( ! top[ a.person ] || a.score > top[ a.person ].score ) {
+						top[ a.person ] = a;
+					}
+				} );
+				list = list.filter( function ( a ) { return top[ a.person ] === a; } );
+			}
+			return list;
+		}
+
+		function fetchAnswers( id ) {
+			answers[ id ] = { state: 'loading' };
+			api( 'GET', 'tests/' + testId + '/attempts/' + id ).then( function ( res ) {
+				answers[ id ] = { state: 'ok', review: Array.isArray( res.review ) ? res.review : [] };
+				paintTable();
+			}, function () {
+				answers[ id ] = { state: 'error' };
+				paintTable();
+			} );
+		}
+
+		function toggle( id ) {
+			open = open === id ? null : id;
+			showAll = false;
+			del = null;
+			delError = '';
+			if ( open !== null && ! answers[ open ] ) {
+				fetchAnswers( open );
+			}
+			paintTable();
+		}
+
+		/* ----- rendering ----- */
+
+		function isRight( item ) {
+			return item.chosen !== null && item.chosen !== undefined && item.chosen === item.correct;
+		}
+
+		function option( item, k ) {
+			return k === null || k === undefined || ! item.options || item.options[ k ] === undefined ? '' : item.options[ k ];
+		}
+
+		function detailHtml( a ) {
+			var got = answers[ a.id ];
+			if ( ! got || got.state === 'loading' ) {
+				return '<p class="tbttm-muted" role="status">Loading answers…</p>';
+			}
+			if ( got.state === 'error' ) {
+				return '<p class="tbttm-rowline" role="alert"><span>Couldn’t load these answers.</span>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small" data-act="retry" data-att="' + a.id + '">Try again</button></p>';
+			}
+			var wrong = got.review.filter( function ( item ) { return ! isRight( item ); } ).length;
+			var html = '<div class="tbttm-rowline tbttm-answers__head"><strong>' + ( wrong ? plural( wrong, 'wrong answer', 'wrong answers' ) : 'Every answer correct' ) + '</strong>'
+				+ '<button type="button" class="tbttm-linkbtn" data-act="all">' + ( showAll ? 'Show wrong answers only' : 'Show all answers' ) + '</button>'
+				+ '<span class="tbttm-spacer"></span>';
+			if ( del === a.id ) {
+				html += '<span class="tbttm-confirm" role="alert"><span>Remove this attempt?</span>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="del-yes" data-att="' + a.id + '"' + ( delBusy ? ' disabled' : '' ) + '>Remove attempt</button>'
+					+ '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-act="del-no"' + ( delBusy ? ' disabled' : '' ) + '>Cancel</button>'
+					+ ( delError ? '<span class="tbttm-note tbttm-note--error">' + esc( delError ) + '</span>' : '' ) + '</span>';
+			} else {
+				html += '<button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--danger" data-act="del" data-att="' + a.id + '">Remove attempt</button>';
+			}
+			html += '</div><ul class="tbttm-alist">';
+			got.review.forEach( function ( item, i ) {
+				var ok = isRight( item );
+				if ( ok && ! showAll ) {
+					return;
+				}
+				var unanswered = item.chosen === null || item.chosen === undefined;
+				html += '<li><span class="tbttm-alist__mark ' + ( ok ? 'is-ok' : 'is-bad' ) + '" aria-hidden="true">' + ( ok ? '✓' : '✗' ) + '</span>'
+					+ '<span class="tbttm-alist__q"><span class="tbttm-sr-only">' + ( ok ? 'Correct. ' : 'Incorrect. ' ) + '</span>' + ( i + 1 ) + '. ' + esc( lastLine( item.body ) ) + '</span>'
+					+ '<span class="tbttm-alist__a">' + ( ok
+						? '<b class="is-right">' + esc( option( item, item.chosen ) ) + '</b>'
+						: 'Answered: <b class="is-yours">' + ( unanswered ? 'no answer' : esc( option( item, item.chosen ) ) ) + '</b> · Correct: <b class="is-right">' + esc( option( item, item.correct ) ) + '</b>' )
+					+ '</span></li>';
+			} );
+			return html + '</ul>';
+		}
+
+		function tableHtml( list ) {
+			var pass = data.test.pass_mark;
+			var cols = pass ? 6 : 5;
+			var html = '<div class="tbttm-rtwrap"><table class="tbttm-rt"><thead><tr><th scope="col">Student</th><th scope="col">Finished</th><th scope="col">Score</th><th scope="col">Time</th>'
+				+ ( pass ? '<th scope="col">Result</th>' : '' ) + '<th scope="col"><span class="tbttm-sr-only">Answers</span></th></tr></thead><tbody>';
+			list.forEach( function ( a ) {
+				var isOpen = open === a.id;
+				html += '<tr class="tbttm-rt__att' + ( isOpen ? ' is-open' : '' ) + '" data-att="' + a.id + '">'
+					+ '<td class="tbttm-rt__name">' + esc( a.name ) + ( a.guest ? '<span class="tbttm-rt__guest">no login</span>' : '' ) + '</td>'
+					+ '<td>' + esc( a.finished ) + '</td>'
+					+ '<td class="tbttm-rt__num">' + a.score + ' / ' + a.total + ' · ' + a.percent + '%'
+					+ '<span class="tbttm-rmeter" aria-hidden="true"><i style="width:' + Math.max( 0, Math.min( 100, +a.percent || 0 ) ) + '%"></i></span></td>'
+					+ '<td class="tbttm-rt__num">' + esc( fmtTime( a.seconds ) ) + '</td>'
+					+ ( pass ? '<td><span class="tbttm-badge ' + ( a.passed ? 'tbttm-badge--published' : 'tbttm-badge--draft' ) + '">' + ( a.passed ? 'Passed' : 'Not passed' ) + '</span></td>' : '' )
+					+ '<td class="tbttm-rt__act"><button type="button" class="tbttm-btn tbttm-btn--small tbttm-btn--ghost" data-act="answers" data-att="' + a.id + '" aria-expanded="' + isOpen + '">' + ( isOpen ? 'Close' : 'Answers' ) + '</button></td></tr>';
+				if ( isOpen ) {
+					html += '<tr class="tbttm-rt__detail"><td colspan="' + cols + '">' + detailHtml( a ) + '</td></tr>';
+				}
+			} );
+			return html + '</tbody></table></div>'
+				+ ( list.length ? '' : '<p class="tbttm-library__empty">No students match your search.</p>' )
+				+ ( data.truncated ? '<p class="tbttm-hint">Showing the newest ' + data.attempts.length + ' attempts.</p>' : '' );
+		}
+
+		function statsHtml() {
+			var st = data.stats;
+			function stat( value, label ) {
+				return '<div class="tbttm-stat"><div class="tbttm-stat__v">' + value + '</div><div class="tbttm-stat__k">' + label + '</div></div>';
+			}
+			return stat( st.attempts, ( st.attempts === 1 ? 'attempt' : 'attempts' ) + ' by ' + plural( st.people, 'person', 'people' ) )
+				+ stat( st.average + '%', 'average score' )
+				+ stat( st.best + '%', 'best score' )
+				+ ( st.passed !== null && st.passed !== undefined ? stat( st.passed + ' of ' + st.attempts, 'passed' ) : '' );
+		}
+
+		function hardestHtml() {
+			if ( ! data.hardest || ! data.hardest.length ) {
+				return '';
+			}
+			return '<section class="tbttm-stage tbttm-stage--numbered"><div class="tbttm-stage__head"><h2 class="tbttm-stage__title">Hardest questions</h2>'
+				+ '<p class="tbttm-stage__sub">The three questions students got wrong most often.</p></div><ul class="tbttm-hard">'
+				+ data.hardest.map( function ( h ) {
+					return '<li><span class="tbttm-hard__p">' + h.percent + '%</span><span class="tbttm-hard__t">' + h.number + '. ' + esc( h.line )
+						+ '<span>' + h.percent + '% answered correctly. Correct answer: ' + esc( h.correct_text ) + '</span></span></li>';
+				} ).join( '' ) + '</ul></section>';
+		}
+
+		/** The table and its count: repainted alone, so the search box keeps its caret. */
+		function paintTable() {
+			var box = root.querySelector( '[data-tbttm-rlist]' );
+			var count = root.querySelector( '[data-tbttm-rcount]' );
+			if ( ! box || ! count ) {
+				return;
+			}
+			var list = shown();
+			box.innerHTML = tableHtml( list );
+			count.textContent = list.length + ' of ' + data.attempts.length + ' shown';
+		}
+
+		/** The stats and the hardest questions, after an attempt is removed. */
+		function paintNumbers() {
+			var stats = root.querySelector( '[data-tbttm-rstats]' );
+			var hard = root.querySelector( '[data-tbttm-rhard]' );
+			if ( stats ) {
+				stats.innerHTML = statsHtml();
+			}
+			if ( hard ) {
+				hard.innerHTML = hardestHtml();
+			}
+		}
+
+		function render() {
+			if ( ! data ) {
+				root.innerHTML = loadError
+					? '<p class="tbttm-note tbttm-note--error" role="alert">' + esc( loadError ) + '</p>'
+						+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn" data-act="reload">Try again</button></div>'
+					: '<p class="tbttm-muted">Loading the results…</p>';
+				return;
+			}
+			var html = '<div class="tbttm-rhead"><h2 class="tbttm-rhead__title">' + esc( data.test.title ) + '</h2>'
+				+ '<p class="tbttm-rhead__facts">' + factsOf( data.test ).map( esc ).join( ' · ' ) + '</p></div>';
+			if ( ! data.stats.attempts ) {
+				root.innerHTML = html + '<p class="tbttm-library__empty">Nobody has taken this test yet. Results appear here as soon as a student finishes.</p>';
+				return;
+			}
+			html += '<div class="tbttm-stats" data-tbttm-rstats>' + statsHtml() + '</div>'
+				+ '<section class="tbttm-stage tbttm-stage--numbered"><div class="tbttm-stage__head"><h2 class="tbttm-stage__title">Attempts</h2></div>'
+				+ '<div class="tbttm-rtools"><div class="tbttm-rtools__search"><label class="tbttm-sr-only" for="tbttm-rsearch">Search students</label>'
+				+ '<input class="tbttm-input" id="tbttm-rsearch" type="search" placeholder="Search students…" autocomplete="off" spellcheck="false" value="' + esc( search ) + '"></div>'
+				+ '<label class="tbttm-check" for="tbttm-rbest"><input id="tbttm-rbest" type="checkbox"' + ( best ? ' checked' : '' ) + '> Best attempt per student</label>'
+				+ '<span class="tbttm-spacer"></span><span class="tbttm-hint" data-tbttm-rcount aria-live="polite"></span></div>'
+				+ '<div data-tbttm-rlist></div></section>'
+				+ '<div data-tbttm-rhard>' + hardestHtml() + '</div>';
+			root.innerHTML = html;
+			paintTable();
+		}
+
+		/* ----- removing ----- */
+
+		function remove( id ) {
+			if ( delBusy ) {
+				return;
+			}
+			delBusy = true;
+			delError = '';
+			paintTable();
+			api( 'DELETE', 'tests/' + testId + '/attempts/' + id ).then( function ( res ) {
+				delBusy = false;
+				del = null;
+				open = null;
+				delete answers[ id ];
+				data.attempts = data.attempts.filter( function ( a ) { return a.id !== id; } );
+				data.stats = res.stats;
+				data.hardest = res.hardest;
+				if ( data.truncated ) {
+					// More attempts wait beyond the listed 500: fetch the list again.
+					load();
+					return;
+				}
+				if ( ! data.stats.attempts ) {
+					render();
+					return;
+				}
+				paintNumbers();
+				paintTable();
+			}, function ( err ) {
+				delBusy = false;
+				delError = err.message;
+				paintTable();
+			} );
+		}
+
+		/* ----- events ----- */
+
+		root.addEventListener( 'input', function ( e ) {
+			if ( e.target.id === 'tbttm-rsearch' ) {
+				search = e.target.value;
+				paintTable();
+			}
+		} );
+
+		root.addEventListener( 'change', function ( e ) {
+			if ( e.target.id === 'tbttm-rbest' ) {
+				best = e.target.checked;
+				paintTable();
+			}
+		} );
+
+		root.addEventListener( 'click', function ( e ) {
+			var b = e.target.closest( 'button' );
+			if ( b && root.contains( b ) ) {
+				if ( b.disabled ) {
+					return;
+				}
+				var id = b.dataset.att ? +b.dataset.att : null;
+				switch ( b.dataset.act ) {
+					case 'reload':
+						render();
+						load();
+						break;
+					case 'answers':
+						toggle( id );
+						break;
+					case 'retry':
+						fetchAnswers( id );
+						paintTable();
+						break;
+					case 'all':
+						showAll = ! showAll;
+						paintTable();
+						break;
+					case 'del':
+						del = id;
+						delError = '';
+						paintTable();
+						break;
+					case 'del-no':
+						del = null;
+						delError = '';
+						paintTable();
+						break;
+					case 'del-yes':
+						remove( id );
+						break;
+				}
+				// A button never also toggles the row it sits in.
+				return;
+			}
+			// A click anywhere else on an attempt's row opens its answers, as
+			// the Answers button does. The open answers are not part of it.
+			var row = e.target.closest( 'tr.tbttm-rt__att' );
+			if ( row && root.contains( row ) && ! e.target.closest( 'a, input, label, select, textarea' ) ) {
+				toggle( +row.dataset.att );
+			}
+		} );
+
+		render();
+		load();
 	}
 
 	/* ---------------------------------------------------------------------
@@ -1286,6 +1674,7 @@
 	function init() {
 		document.querySelectorAll( '[data-tbttm-library]' ).forEach( Library );
 		document.querySelectorAll( '[data-tbttm-builder]' ).forEach( Builder );
+		document.querySelectorAll( '[data-tbttm-results]' ).forEach( Results );
 	}
 
 	if ( document.readyState === 'loading' ) {
