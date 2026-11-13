@@ -811,19 +811,6 @@
 	line-height: 1.9;
 }
 
-.tbttm .tbttm-word {
-	font-weight: 600;
-}
-
-.tbttm .tbttm-word.is-right {
-	color: var(--tbt-success);
-}
-
-.tbttm s.tbttm-word.is-wrong {
-	color: var(--tbt-error);
-	text-decoration: line-through;
-}
-
 @media (max-width: 640px) {
 	.tbttm .tbttm-cover {
 		margin: -24px -24px 0;

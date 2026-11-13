@@ -411,3 +411,21 @@
 		transform: none;
 	}
 }
+
+/* ---------- Fill in the gaps: a student's words put back in the text ----------
+   Shared by the student's result page and the teacher's Results screen: a
+   right word in green; a wrong word crossed out in red, followed by the
+   right one in green. */
+
+.tbttm .tbttm-word {
+	font-weight: 600;
+}
+
+.tbttm .tbttm-word.is-right {
+	color: var(--tbt-success);
+}
+
+.tbttm s.tbttm-word.is-wrong {
+	color: var(--tbt-error);
+	text-decoration: line-through;
+}
