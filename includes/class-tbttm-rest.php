@@ -966,7 +966,10 @@ class TBTTM_Rest {
 	}
 
 	/**
-	 * Autosave: merge the answers into the stored ones.
+	 * Autosave: merge the answers into the stored ones. Answers with the
+	 * attempt's whole state, as starting does, so a guest's browser can carry
+	 * on with an attempt it holds the token for. `revealed` covers only the
+	 * questions already checked, whose answer the student has seen.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -988,7 +991,8 @@ class TBTTM_Rest {
 			return new WP_Error( 'tbttm_save_failed', __( 'Your answers could not be saved. Trying again.', 'tbt-test-maker' ), array( 'status' => 500 ) );
 		}
 
-		return rest_ensure_response( array( 'answers' => (object) $answers ) );
+		$attempt->answers = wp_json_encode( (object) $answers );
+		return rest_ensure_response( TBTTM_Attempts::state( $attempt, $questions ) );
 	}
 
 	/**

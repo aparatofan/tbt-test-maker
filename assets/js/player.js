@@ -11,6 +11,10 @@
  * 2. The answer key is not in this page. The server scores the attempt, and
  *    in "after each question" mode reveals one answer at a time, after it has
  *    stored the student's choice.
+ *
+ * A guest on an open test has no login and no nonce. Their attempt is owned
+ * by its token, which this page keeps in localStorage and sends in the
+ * X-TBTTM-Token header; that is also how the same browser carries on later.
  */
 ( function () {
 	'use strict';
@@ -107,14 +111,24 @@
 	 * One REST call. Rejects with { code, status, data } — code 'network' when
 	 * the request never got an answer. An expired nonce is refreshed and the
 	 * call retried once, so a page left open for hours can still save.
+	 *
+	 * A logged-in student sends the nonce. A guest sends no X-WP-Nonce header
+	 * at all (an empty one would be checked and refused), and the attempt's
+	 * token instead, once there is one.
 	 */
-	function api( method, path, body, retried ) {
+	function api( method, path, body, retried, token ) {
 		var opts = {
 			method: method,
 			credentials: 'same-origin',
 			cache: 'no-store',
-			headers: { 'X-WP-Nonce': CFG.nonce || '' },
+			headers: {},
 		};
+		if ( CFG.nonce ) {
+			opts.headers[ 'X-WP-Nonce' ] = CFG.nonce;
+		}
+		if ( token ) {
+			opts.headers[ 'X-TBTTM-Token' ] = token;
+		}
 		if ( body !== undefined ) {
 			opts.headers[ 'Content-Type' ] = 'application/json';
 			opts.body = JSON.stringify( body );
@@ -124,10 +138,10 @@
 				if ( res.ok ) {
 					return data;
 				}
-				var err = { code: ( data && data.code ) || 'http_' + res.status, status: res.status, data: ( data && data.data ) || {} };
-				if ( err.code === 'rest_cookie_invalid_nonce' && ! retried ) {
+				var err = { code: ( data && data.code ) || 'http_' + res.status, status: res.status, message: ( data && data.message ) || '', data: ( data && data.data ) || {} };
+				if ( err.code === 'rest_cookie_invalid_nonce' && ! retried && CFG.nonce ) {
 					return refreshNonce().then( function () {
-						return api( method, path, body, true );
+						return api( method, path, body, true, token );
 					} );
 				}
 				throw err;
@@ -156,6 +170,25 @@
 		var KEY = 'tbttm:' + T.id + ':' + ( CFG.userId || 0 );
 		var bulls = CFG.bulls || {};
 
+		// A guest: a logged-out visitor on an open test. Their attempt id,
+		// token and name live under GKEY from the moment the server answers
+		// the start; the token of their last finished attempt under LKEY.
+		var GUEST = !! data.guest;
+		var GKEY = 'tbttm:' + T.id + ':guest';
+		var LKEY = 'tbttm:' + T.id + ':last';
+		var NAME_ID = 'tbttm-name-' + T.id;
+		var NAME_HINT = 'Shown on your result.';
+		var NAME_MISSING = 'Type your name to start.';
+		var guest = GUEST ? readGuest() : null;
+
+		// Class Progress in TBT Notes: only for a logged-in student who is
+		// not the owner, on a published test. Without the block, or without
+		// the endpoint, nothing is sent.
+		var PRESENCE_EVERY = 20000;
+		var activity = data.activity || null;
+		var presenceTimer = null;
+		var startedAt = 0;
+
 		var s = {
 			view: 'start',
 			i: 0,
@@ -177,9 +210,119 @@
 			saving: false,
 			offline: false,
 			justDone: -1,
+			name: guest ? guest.name : '',
+			nameError: false,
 		};
 		var saveTimer = null;
 		var retryTimer = null;
+
+		if ( GUEST ) {
+			s.lastResult = readLast();
+			s.resume = null;
+			if ( guest ) {
+				var kept = readLocal();
+				s.resume = { id: guest.attempt, answered: kept && kept.attempt === guest.attempt ? countKnown( kept.answers ) : 0 };
+			}
+		}
+
+		/** One REST call for this test; a guest's carries the attempt's token. */
+		function call( method, path, body ) {
+			var token = GUEST ? ( s.attempt ? s.attempt.token : ( guest ? guest.token : '' ) ) : '';
+			return api( method, path, body, false, token );
+		}
+
+		/* ----- guest: the attempt this browser holds ----- */
+
+		function readGuest() {
+			return store( function ( ls ) {
+				var v = JSON.parse( ls.getItem( GKEY ) || 'null' );
+				return v && typeof v === 'object' && v.attempt && /^[a-f0-9]{32}$/.test( String( v.token ) )
+					? { attempt: +v.attempt, token: String( v.token ), name: String( v.name || '' ) }
+					: null;
+			} ) || null;
+		}
+
+		function writeGuest() {
+			store( function ( ls ) {
+				ls.setItem( GKEY, JSON.stringify( guest ) );
+			} );
+		}
+
+		function readLast() {
+			var token = store( function ( ls ) {
+				return ls.getItem( LKEY );
+			} );
+			return /^[a-f0-9]{32}$/.test( String( token ) ) ? String( token ) : '';
+		}
+
+		/** The server holds the guest's result: forget the attempt, keep the result's token. */
+		function guestDone( token ) {
+			guest = null;
+			store( function ( ls ) {
+				ls.removeItem( GKEY );
+				if ( token ) {
+					ls.setItem( LKEY, token );
+				}
+			} );
+			if ( token ) {
+				s.lastResult = token;
+			}
+		}
+
+		/** How many of these answers belong to questions still in the test. */
+		function countKnown( answers ) {
+			return Q.filter( function ( q ) { return answers[ q.id ] !== undefined; } ).length;
+		}
+
+		function cleanName( text ) {
+			return String( text || '' ).replace( /\s+/g, ' ' ).trim();
+		}
+
+		/* ----- Class Progress ----- */
+
+		/** A side effect of taking the test, never a gate on it: every failure is swallowed. */
+		function postActivity( path, body ) {
+			if ( ! CFG.activityBase || ! activity ) {
+				return;
+			}
+			var nonce = CFG.nonce || CFG.activityNonce;
+			if ( ! nonce ) {
+				return;
+			}
+			try {
+				fetch( CFG.activityBase + path, {
+					method: 'POST',
+					credentials: 'same-origin',
+					cache: 'no-store',
+					headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+					body: JSON.stringify( body || {} ),
+					// A student who closes the tab right after finishing is still recorded.
+					keepalive: true,
+				} ).catch( function () {} );
+			} catch ( e ) {
+				// Nothing in the test waits for this.
+			}
+		}
+
+		/** Present now, then every 20 seconds while a question is showing. */
+		function startPresence() {
+			if ( presenceTimer || ! CFG.activityBase || ! activity ) {
+				return;
+			}
+			postActivity( '/presence', {} );
+			presenceTimer = window.setInterval( function () {
+				if ( s.view === 'quiz' ) {
+					postActivity( '/presence', {} );
+				}
+			}, PRESENCE_EVERY );
+		}
+
+		function stopPresence() {
+			if ( presenceTimer ) {
+				window.clearInterval( presenceTimer );
+				presenceTimer = null;
+			}
+		}
 
 		/* ----- local copy ----- */
 
@@ -287,7 +430,7 @@
 			} );
 			s.saving = true;
 			updateStatus();
-			api( 'PUT', 'attempts/' + s.attempt.id, { answers: sent } ).then( function () {
+			call( 'PUT', 'attempts/' + s.attempt.id, { answers: sent } ).then( function () {
 				s.saving = false;
 				s.offline = false;
 				clearTimeout( retryTimer );
@@ -322,6 +465,10 @@
 		function finishedElsewhere( token ) {
 			s.dirty = {};
 			clearLocal();
+			stopPresence();
+			if ( GUEST ) {
+				guestDone( token );
+			}
 			if ( token ) {
 				showResult( token );
 			}
@@ -383,8 +530,32 @@
 			}
 		}
 
+		/** The server has the attempt: show its first open question. */
+		function enterQuiz( state ) {
+			s.busy = false;
+			adopt( state );
+			s.result = null;
+			s.warn = false;
+			s.failed = false;
+			s.view = 'quiz';
+			// Resume at the first question still open: unanswered, or in
+			// "after each question" mode, not yet checked.
+			var first = Q.findIndex( function ( q ) {
+				return T.feedback === 'now' ? ! s.checked[ q.id ] : s.answers[ q.id ] === undefined;
+			} );
+			go( first < 0 ? N - 1 : first );
+			startedAt = Date.now();
+			startPresence();
+			render();
+			scrollToTop();
+		}
+
 		function start( restart ) {
 			if ( s.busy ) {
+				return;
+			}
+			if ( GUEST ) {
+				startGuest( restart );
 				return;
 			}
 			s.busy = true;
@@ -393,24 +564,108 @@
 				clearLocal();
 			}
 			render();
-			api( 'POST', 'attempts', { test: T.id, restart: !! restart } ).then( function ( state ) {
-				s.busy = false;
-				adopt( state );
-				s.result = null;
-				s.warn = false;
-				s.failed = false;
-				s.view = 'quiz';
-				// Resume at the first question still open: unanswered, or in
-				// "after each question" mode, not yet checked.
-				var first = Q.findIndex( function ( q ) {
-					return T.feedback === 'now' ? ! s.checked[ q.id ] : s.answers[ q.id ] === undefined;
-				} );
-				go( first < 0 ? N - 1 : first );
-				render();
-				scrollToTop();
-			}, function () {
+			call( 'POST', 'attempts', { test: T.id, restart: !! restart } ).then( enterQuiz, function () {
 				s.busy = false;
 				s.startError = 'We couldn’t start the test. Check your connection and try again.';
+				render();
+			} );
+		}
+
+		/* ----- starting, as a guest ----- */
+
+		function focusName() {
+			var field = document.getElementById( NAME_ID );
+			if ( field ) {
+				field.focus( { preventScroll: true } );
+			}
+		}
+
+		/**
+		 * START TEST, CONTINUE TEST, Start again and the result's Try again,
+		 * for a guest. With an attempt in this browser: carry on with it, or
+		 * replace it. Without one: the name comes first.
+		 */
+		function startGuest( restart ) {
+			if ( guest && ! restart ) {
+				continueGuest();
+				return;
+			}
+			var name = cleanName( guest ? guest.name : s.name );
+			if ( name.length < 2 ) {
+				// Try again on a result opened later: back to the start
+				// screen, where the name is asked, without scolding.
+				s.nameError = s.view === 'start';
+				s.view = 'start';
+				render();
+				focusName();
+				return;
+			}
+			newGuestAttempt( name, null, !! restart );
+		}
+
+		/**
+		 * A new attempt under this name. `carry` holds answers from an attempt
+		 * the server no longer knows; they go to the new one at once.
+		 */
+		function newGuestAttempt( name, carry, restart ) {
+			s.busy = true;
+			s.startError = '';
+			s.nameError = false;
+			render();
+			call( 'POST', 'attempts', { test: T.id, name: name } ).then( function ( state ) {
+				guest = { attempt: state.id, token: state.token, name: name };
+				writeGuest();
+				s.name = name;
+				s.attempt = null;
+				if ( carry ) {
+					store( function ( ls ) {
+						ls.setItem( KEY, JSON.stringify( { attempt: state.id, answers: carry, dirty: Object.keys( carry ) } ) );
+					} );
+				} else if ( restart ) {
+					clearLocal();
+				}
+				enterQuiz( state );
+			}, function ( err ) {
+				s.busy = false;
+				if ( err.code === 'tbttm_no_name' ) {
+					s.nameError = true;
+					s.view = 'start';
+					render();
+					focusName();
+					return;
+				}
+				s.startError = err.status === 401
+					? 'This test is now for logged-in students. Reload the page to log in. Your answers are still on this device.'
+					: err.status === 429 && err.message
+						? err.message
+						: 'We couldn’t start the test. Check your connection and try again.';
+				render();
+			} );
+		}
+
+		/**
+		 * CONTINUE TEST: carry on with the attempt this browser holds. Its
+		 * answers here go to the server first, and the server answers with
+		 * the attempt's state. If the server no longer knows the attempt, a
+		 * new one starts under the stored name and takes the stored answers.
+		 */
+		function continueGuest() {
+			var local = readLocal();
+			var answers = local && local.attempt === guest.attempt ? local.answers : {};
+			s.busy = true;
+			s.startError = '';
+			render();
+			call( 'PUT', 'attempts/' + guest.attempt, { answers: answers } ).then( enterQuiz, function ( err ) {
+				s.busy = false;
+				if ( err.code === 'tbttm_attempt_finished' ) {
+					finishedElsewhere( err.data.token );
+					return;
+				}
+				if ( err.code === 'tbttm_no_attempt' ) {
+					newGuestAttempt( guest.name, answers, false );
+					return;
+				}
+				s.startError = 'We couldn’t open your test. Check your connection and try again.';
 				render();
 			} );
 		}
@@ -432,7 +687,7 @@
 				}
 				return;
 			}
-			api( 'POST', 'attempts', { test: T.id } ).then( function ( state ) {
+			call( 'POST', 'attempts', { test: T.id } ).then( function ( state ) {
 				if ( s.view !== 'start' || s.busy ) {
 					return;
 				}
@@ -477,7 +732,7 @@
 			s.busy = true;
 			s.checkFailed = false;
 			render();
-			api( 'POST', 'attempts/' + s.attempt.id + '/check', { question: +id, answer: s.answers[ id ] } ).then( function ( res ) {
+			call( 'POST', 'attempts/' + s.attempt.id + '/check', { question: +id, answer: s.answers[ id ] } ).then( function ( res ) {
 				s.busy = false;
 				s.checked[ id ] = true;
 				s.revealed[ id ] = res.correct;
@@ -515,17 +770,33 @@
 			s.warn = false;
 			render();
 			clearTimeout( saveTimer );
-			api( 'POST', 'attempts/' + s.attempt.id + '/finish', { answers: s.answers } ).then( function ( result ) {
+			call( 'POST', 'attempts/' + s.attempt.id + '/finish', { answers: s.answers } ).then( function ( result ) {
 				s.busy = false;
 				s.failed = false;
 				s.dirty = {};
 				clearTimeout( retryTimer );
 				// Only now, with the result stored on the server.
 				clearLocal();
+				if ( GUEST ) {
+					guestDone( result.token );
+				}
 				s.resume = null;
 				s.lastResult = result.token || s.lastResult;
 				s.result = result;
 				s.view = 'result';
+				// Class Progress, once, with the server's own score. Presence
+				// ends here and does not start again on the result screen.
+				stopPresence();
+				if ( activity ) {
+					postActivity( '', {
+						tool: 'test',
+						object_ref: activity.objectRef,
+						object_title: activity.objectTitle,
+						score: result.score,
+						score_max: result.total,
+						duration_seconds: startedAt ? Math.max( 0, Math.round( ( Date.now() - startedAt ) / 1000 ) ) : null,
+					} );
+				}
 				render();
 				scrollToTop();
 			}, function () {
@@ -540,10 +811,11 @@
 			s.busy = true;
 			s.resultError = '';
 			render();
-			api( 'GET', 'attempts/' + token + '/result' ).then( function ( result ) {
+			call( 'GET', 'attempts/' + token + '/result' ).then( function ( result ) {
 				s.busy = false;
 				s.result = result;
 				s.view = 'result';
+				stopPresence();
 				render();
 				scrollToTop();
 			}, function () {
@@ -592,12 +864,15 @@
 				return html + '<p class="tbttm-muted">This test has no questions yet.</p>';
 			}
 
-			var resume = s.resume && s.resume.answered > 0;
+			// A guest with an attempt in this browser always carries on with
+			// it; a logged-in student once they have answered something.
+			var done = s.resume ? s.resume.answered : 0;
+			var resume = GUEST ? !! guest : done > 0;
 			if ( resume ) {
-				var pct = Math.round( s.resume.answered / N * 100 );
+				var pct = Math.round( done / N * 100 );
 				html += '<div class="tbttm-resume">'
-					+ '<p><strong>Welcome back.</strong> You answered ' + s.resume.answered + ' of ' + N + ' questions last time. Your answers are still here.</p>'
-					+ '<div class="tbttm-meter" role="progressbar" aria-label="Answered" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + s.resume.answered + '"><i style="width:' + pct + '%"></i></div>'
+					+ '<p><strong>Welcome back.</strong> You answered ' + done + ' of ' + N + ' questions last time. Your answers are still here.</p>'
+					+ '<div class="tbttm-meter" role="progressbar" aria-label="Answered" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + done + '"><i style="width:' + pct + '%"></i></div>'
 					+ '</div>';
 			} else {
 				html += '<p class="tbttm-lead">Read each question and choose one answer. ' + ( T.feedback === 'now'
@@ -611,6 +886,14 @@
 			}
 			if ( s.resultError ) {
 				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>' + esc( s.resultError ) + '</p></div>';
+			}
+			if ( GUEST && ! guest ) {
+				html += '<div class="tbttm-name' + ( s.nameError ? ' is-bad' : '' ) + '" data-tbttm-namebox>'
+					+ '<label class="tbttm-name__label" for="' + NAME_ID + '">Your name</label>'
+					+ '<input class="tbttm-name__input" id="' + NAME_ID + '" type="text" autocomplete="name" maxlength="120" data-tbttm-name'
+					+ ' value="' + esc( s.name ) + '" placeholder="e.g. Milena" aria-describedby="' + NAME_ID + '-hint"' + ( s.nameError ? ' aria-invalid="true"' : '' ) + '>'
+					+ '<span class="tbttm-name__hint" id="' + NAME_ID + '-hint" data-tbttm-namehint' + ( s.nameError ? ' role="alert"' : '' ) + '>'
+					+ ( s.nameError ? NAME_MISSING : NAME_HINT ) + '</span></div>';
 			}
 			html += '<div class="tbttm-row tbttm-start__actions">'
 				+ '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="start"' + ( s.busy ? ' disabled' : '' ) + '>'
@@ -764,6 +1047,7 @@
 			html += '<div>'
 				+ ( set ? '<span class="tbttm-pill ' + ( passed ? 'tbttm-pill--pass' : 'tbttm-pill--fail' ) + '">' + ( passed ? 'Passed' : 'Not passed yet' ) + '</span>' : '' )
 				+ '<h2 class="tbttm-stage__title">Here is your result</h2>'
+				+ ( r.name ? '<p class="tbttm-result__name">' + esc( r.name ) + '</p>' : '' )
 				+ '<div class="tbttm-score"><span class="tbttm-score__big">' + ( r.score || 0 ) + ' / ' + total + '</span><span class="tbttm-score__pct">' + pct + '%</span></div>'
 				+ '<p class="tbttm-comment">' + esc( msg ) + '</p></div>';
 
@@ -804,6 +1088,36 @@
 			var t = e.target;
 			if ( t.type === 'radio' && t.name === 'tbttm-ans-' + T.id ) {
 				choose( +t.value );
+			}
+		} );
+
+		// The name field keeps its own state between renders, so typing never
+		// loses the caret. The red mark goes as soon as the guest types.
+		root.addEventListener( 'input', function ( e ) {
+			var t = e.target;
+			if ( ! t.hasAttribute || ! t.hasAttribute( 'data-tbttm-name' ) ) {
+				return;
+			}
+			s.name = t.value;
+			if ( s.nameError ) {
+				s.nameError = false;
+				t.removeAttribute( 'aria-invalid' );
+				var box = root.querySelector( '[data-tbttm-namebox]' );
+				var hint = root.querySelector( '[data-tbttm-namehint]' );
+				if ( box ) {
+					box.classList.remove( 'is-bad' );
+				}
+				if ( hint ) {
+					hint.removeAttribute( 'role' );
+					hint.textContent = NAME_HINT;
+				}
+			}
+		} );
+
+		root.addEventListener( 'keydown', function ( e ) {
+			if ( e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute( 'data-tbttm-name' ) ) {
+				e.preventDefault();
+				start( false );
 			}
 		} );
 
@@ -879,7 +1193,9 @@
 		} );
 
 		render();
-		if ( ! T.draft ) {
+		// A guest's attempt is fetched when they press CONTINUE TEST, with
+		// their token; there is nothing to look up for them before that.
+		if ( ! T.draft && ! GUEST ) {
 			syncOnLoad();
 		}
 	}
