@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       TBT Test Maker
- * Description:       Multiple-choice tests for The Blue Tree. Teachers build a test or import its questions from Excel, and can attach it to a TBT Notes class. A test is for logged-in students or open to anyone with the link; either way it is taken one question at a time, with every answer saved as it is given, and the result shown at the end. Scoring happens on the server.
- * Version:           0.3.0
+ * Description:       Multiple-choice tests for The Blue Tree. Teachers build a test or import its questions from Excel, and can attach it to a TBT Notes class. A test is for logged-in students or open to anyone with the link; either way it is taken one question at a time, with every answer saved as it is given, and the result shown at the end. A test can give a PDF certificate and email the student their result. Scoring happens on the server.
+ * Version:           0.4.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            TBT
@@ -12,7 +12,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TBTTM_VERSION', '0.3.0' );
+define( 'TBTTM_VERSION', '0.4.0' );
 define( 'TBTTM_DB_VERSION', '1.0' );
 define( 'TBTTM_PLUGIN_FILE', __FILE__ );
 define( 'TBTTM_DIR', plugin_dir_path( __FILE__ ) );
@@ -32,6 +32,8 @@ require_once TBTTM_DIR . 'includes/class-tbttm-classes.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-validator.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-attempts.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-results.php';
+require_once TBTTM_DIR . 'includes/class-tbttm-certificate.php';
+require_once TBTTM_DIR . 'includes/class-tbttm-mail.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-rest.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-teacher.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-player.php';
@@ -76,6 +78,7 @@ add_action( 'plugins_loaded', function () {
 	new TBTTM_Teacher();
 	new TBTTM_Player();
 	new TBTTM_Notes_Bridge();
+	new TBTTM_Mail();
 
 	if ( is_admin() ) {
 		new TBTTM_Settings();
