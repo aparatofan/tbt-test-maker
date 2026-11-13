@@ -227,6 +227,10 @@ class TBTTM_Player {
 			// emptied (TBTTM_Gaps::public_body()), never its stored body.
 			'questions'  => $is_draft ? array() : TBTTM_Attempts::public_questions( $questions ),
 			'count'      => count( $questions ),
+			// How many gaps a test with only gap questions holds, else 0:
+			// the start screen says "7 gaps" in place of "N questions". A
+			// draft sends no questions, so it cannot count them itself.
+			'gaps'       => self::only_gaps( $questions ),
 			'resume'     => $resume,
 			'lastResult' => $last_result,
 			'guest'      => $is_guest,
@@ -259,6 +263,24 @@ class TBTTM_Player {
 			. '</section>';
 
 		return $this->wrap( $head . $app );
+	}
+
+	/**
+	 * The number of gaps in a test made only of gap questions; 0 for any
+	 * other test.
+	 *
+	 * @param array[] $questions The test's questions.
+	 * @return int
+	 */
+	private static function only_gaps( array $questions ) {
+		$gaps = 0;
+		foreach ( $questions as $q ) {
+			if ( ! TBTTM_Attempts::is_gap( $q ) ) {
+				return 0;
+			}
+			$gaps += count( $q['gaps'] );
+		}
+		return $gaps;
 	}
 
 	/**
