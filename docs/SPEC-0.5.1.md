@@ -89,13 +89,14 @@ On load and after every save, set `classText` to the saved class's title (or `''
   - Trim the text. Match it against `CLASSES` titles, exact, case-insensitive; first match wins (as Swipe).
   - **Empty:** `classMiss = false`; `setClass( 0 )`.
   - **Match:** `classMiss = false`; `classText` = the class's own title (so "b2 tuesday group" becomes "B2 Tuesday group"). If it is the class already chosen, only re-render; otherwise `setClass( id )`.
-  - **No match:** `classMiss = true`; `d.class_id` and `d.lesson_id` are left as they are; render with focus kept on the field.
+  - **No match:** `classMiss = true`; `d.class_id` and `d.lesson_id` are left as they are; redraw the class pair (see below).
+- **Redraw, not render.** `change` also fires when the field is left, so a full `render()` would swallow a click on Save draft / Publish and pull focus back on Tab. On every `change` of the class field, redraw only the `.tbttm-classpair` block (`outerHTML` from `classFieldHtml()`), and put focus back on `#tbttm-f-class` only if it still had focus (a suggestion picked from the list). The lessons request does the same when it returns. Replace the old `t.id === 'tbttm-f-class'` branch in the `change` handler (~L1806); it would turn a typed title into class 0.
 - **Hint line** (one line under both columns):
   - `classMiss`: `<strong>No class matches that. Pick one from the list, or clear the field to save without a class.</strong>`
   - else the two existing hints, unchanged in wording.
 - **Lesson column:** shown only when `d.class_id` and not `classMiss`.
 - **Saving while `classMiss`:** `commit()` does not send anything. It shows the error note "Pick a class from the list, or clear the Class field to save without a class." in the save bar and focuses `#tbttm-f-class`. A typo must never detach a test from its class silently.
-- `setClass()`, the lessons request, `lessonSeq` and `payload()` keep working exactly as now.
+- `setClass()` keeps its `lessonSeq` guard and `payload()` is unchanged; `setClass()` and the lessons callback call the class-pair redraw instead of `render()`.
 
 ### CSS (teacher.css)
 
@@ -220,6 +221,7 @@ Run the standard checks from `CLAUDE.md` (php -l, node --check, the PHP and JS t
 - [ ] Clearing the field and saving stores the test with no class.
 - [ ] A test saved with a class and lesson reopens with both in place.
 - [ ] Changing the class clears the lesson.
+- [ ] Typing a class name and clicking Save draft straight away saves on the first click; Tab out of the field moves on at once.
 - [ ] Under 640px Class and Lesson stack.
 
 **Look**
