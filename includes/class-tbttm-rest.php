@@ -1202,7 +1202,8 @@ class TBTTM_Rest {
 
 	/**
 	 * "After each question" mode: store one answer, lock the question, and
-	 * reveal its correct option. Checking a question twice returns the stored
+	 * reveal its correct option, or for a gap question which gaps are right
+	 * and the first accepted answer of each. Checking a question twice returns the stored
 	 * answer and the same verdict, so a retried request is harmless.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -1228,7 +1229,8 @@ class TBTTM_Rest {
 				break;
 			}
 		}
-		if ( ! $question || null === $question['correct'] ) {
+		$is_gap = $question && TBTTM_Attempts::is_gap( $question );
+		if ( ! $question || ( $is_gap ? ! $question['gaps'] : null === $question['correct'] ) ) {
 			return new WP_Error( 'tbttm_no_question', __( 'That question is not in this test.', 'tbt-test-maker' ), array( 'status' => 400 ) );
 		}
 
@@ -1237,11 +1239,21 @@ class TBTTM_Rest {
 
 		if ( ! in_array( $qid, $checked, true ) ) {
 			$answer = $request->get_param( 'answer' );
-			if ( ! is_numeric( $answer ) || (int) $answer < 0 || (int) $answer >= count( $question['options'] ) ) {
-				return new WP_Error( 'tbttm_bad_answer', __( 'Choose an answer first.', 'tbt-test-maker' ), array( 'status' => 400 ) );
+			if ( $is_gap ) {
+				// One gap with text is enough: a student who cannot fill
+				// every gap is never stuck, and an empty gap is marked wrong.
+				$words = is_array( $answer ) ? TBTTM_Gaps::shape( $answer, count( $question['gaps'] ) ) : array();
+				if ( '' === implode( '', $words ) ) {
+					return new WP_Error( 'tbttm_bad_answer', __( 'Fill in a gap first.', 'tbt-test-maker' ), array( 'status' => 400 ) );
+				}
+				$answers[ $qid ] = $words;
+			} else {
+				if ( ! is_numeric( $answer ) || (int) $answer < 0 || (int) $answer >= count( $question['options'] ) ) {
+					return new WP_Error( 'tbttm_bad_answer', __( 'Choose an answer first.', 'tbt-test-maker' ), array( 'status' => 400 ) );
+				}
+				$answers[ $qid ] = (int) $answer;
 			}
-			$answers[ $qid ] = (int) $answer;
-			$checked[]       = $qid;
+			$checked[] = $qid;
 			$ok              = TBTTM_DB::update_attempt(
 				(int) $attempt->id,
 				array(
@@ -1254,10 +1266,25 @@ class TBTTM_Rest {
 			}
 		}
 
+		if ( $is_gap ) {
+			$given = TBTTM_Gaps::shape( $answers[ $qid ] ?? null, count( $question['gaps'] ) );
+			return rest_ensure_response(
+				array_merge(
+					array(
+						'question' => $qid,
+						'answer'   => $given,
+					),
+					// right: one verdict per gap; correct: the first accepted
+					// answer of each gap.
+					TBTTM_Attempts::reveal( $question, $given )
+				)
+			);
+		}
+
 		return rest_ensure_response(
 			array(
 				'question' => $qid,
-				'answer'   => $answers[ $qid ] ?? null,
+				'answer'   => isset( $answers[ $qid ] ) && ! is_array( $answers[ $qid ] ) ? $answers[ $qid ] : null,
 				'correct'  => (int) $question['correct'],
 			)
 		);

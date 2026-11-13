@@ -9,7 +9,7 @@
  * before any of this runs.
  *
  * The calculations (hardest(), last_line(), seconds()) use no WordPress
- * function, so tests/test-results.php can run them without WordPress.
+ * function (hardest() asks TBTTM_Gaps, which is plain PHP too), so tests/test-results.php can run them without WordPress.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -54,6 +54,10 @@ class TBTTM_Results {
 	 * @return int|null
 	 */
 	public static function seconds( $started, $finished ) {
+		// An empty time is unknown; strtotime( ' UTC' ) would read it as now.
+		if ( '' === trim( (string) $started ) || '' === trim( (string) $finished ) ) {
+			return null;
+		}
 		$from = strtotime( (string) $started . ' UTC' );
 		$to   = strtotime( (string) $finished . ' UTC' );
 		if ( false === $from || false === $to || $to < $from ) {
@@ -72,6 +76,11 @@ class TBTTM_Results {
 	 * correct one; no answer counts as wrong. Whether an answer was right is
 	 * the snapshot's own verdict, so editing a question later does not
 	 * re-mark old attempts.
+	 *
+	 * A gap question's rate is right gaps out of all gaps, over those
+	 * attempts, again by the snapshot's own verdicts. An entry of the other
+	 * type than the question has now (the question changed type) is left
+	 * out. A snapshot entry without `type` is a multiple choice entry.
 	 *
 	 * The lowest rates come first, ties in question order. A question no
 	 * attempt holds is left out. With fewer than MIN_ATTEMPTS attempts there
@@ -121,6 +130,17 @@ class TBTTM_Results {
 					continue;
 				}
 				$seen[ $i ] = true;
+				$entry_gap  = isset( $entry['type'] ) && 'gap' === $entry['type'];
+				$now_gap    = isset( $questions[ $i ]['type'] ) && 'gap' === $questions[ $i ]['type'];
+				if ( $entry_gap !== $now_gap ) {
+					continue;
+				}
+				if ( $entry_gap ) {
+					$verdicts     = isset( $entry['right'] ) && is_array( $entry['right'] ) ? $entry['right'] : array();
+					$held[ $i ]  += count( $verdicts );
+					$right[ $i ] += count( array_filter( $verdicts ) );
+					continue;
+				}
 				++$held[ $i ];
 				$chosen  = $entry['chosen'] ?? null;
 				$correct = $entry['correct'] ?? null;
@@ -152,7 +172,19 @@ class TBTTM_Results {
 
 		$out = array();
 		foreach ( array_slice( $rated, 0, self::HARDEST ) as $r ) {
-			$q       = $questions[ $r['i'] ];
+			$q = $questions[ $r['i'] ];
+			if ( isset( $q['type'] ) && 'gap' === $q['type'] ) {
+				// The first line with a gap; the correct text is that line
+				// with the first accepted answers put in.
+				$line  = TBTTM_Gaps::line( $q['body'] );
+				$out[] = array(
+					'number'       => $r['i'] + 1,
+					'line'         => TBTTM_Gaps::blank( $line ),
+					'percent'      => $r['percent'],
+					'correct_text' => TBTTM_Gaps::keyed( $line ),
+				);
+				continue;
+			}
 			$correct = $q['correct'] ?? null;
 			$out[]   = array(
 				'number'       => $r['i'] + 1,

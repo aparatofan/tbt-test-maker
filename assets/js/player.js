@@ -72,6 +72,37 @@
 		return html;
 	}
 
+	// One gap in a stored gap body: brackets with no bracket inside. The
+	// same pattern as TBTTM_Gaps::PATTERN.
+	var GAP = /\[([^\[\]]*)\]/g;
+
+	/**
+	 * A gap question's text with something put in each gap. `body` holds
+	 * `[]` (the student page) or `[answers]` (a finished attempt's review);
+	 * fill( g ) returns the HTML for gap g. The text is formatted first, as
+	 * any body is, and the gaps are put in last: a `[]` passes through
+	 * escaping, the speaker's name and the italics untouched, so bold names,
+	 * line breaks and italics that span a gap all stay.
+	 */
+	function formatGaps( body, count, fill ) {
+		var g = 0;
+		return formatBody( String( body || '' ).replace( GAP, '[]' ) ).replace( /\[\]/g, function ( marker ) {
+			return g < count ? fill( g++ ) : marker;
+		} );
+	}
+
+	/** Two answers compared by value: an option index, or a list of words. */
+	function sameAnswer( a, b ) {
+		if ( Array.isArray( a ) && Array.isArray( b ) ) {
+			return a.length === b.length && a.every( function ( w, k ) { return w === b[ k ]; } );
+		}
+		return a === b;
+	}
+
+	function copyAnswer( a ) {
+		return Array.isArray( a ) ? a.slice() : a;
+	}
+
 	/** Run fn with storage, never letting a storage error reach the test. */
 	function store( fn ) {
 		try {
@@ -208,6 +239,13 @@
 		var T = data.test || {};
 		var Q = data.questions || [];
 		var N = Q.length;
+		// A test with one question, of either type: no tiles, no question
+		// number and no Back button.
+		var ONE = N === 1;
+		// Points: one per multiple choice question, one per gap.
+		var POINTS = Q.reduce( function ( n, q ) { return n + ( isGap( q ) ? q.gaps : 1 ); }, 0 );
+		var ONLY_GAPS = N > 0 && Q.every( isGap );
+		var GAP_MAX = 100;
 		var KEY = 'tbttm:' + T.id + ':' + ( CFG.userId || 0 );
 		var bulls = CFG.bulls || {};
 
@@ -240,10 +278,10 @@
 			i: 0,
 			page: 0,
 			attempt: null,      // { id, token } once the server has it
-			answers: {},        // question ID → option index
+			answers: {},        // question ID → option index, or a list of typed words
 			dirty: {},          // question IDs the server has not confirmed
 			checked: {},        // question IDs checked ("after each question")
-			revealed: {},       // question ID → correct index, once checked
+			revealed: {},       // question ID → correct index, or { right, correct } for gaps
 			resume: data.resume || null,
 			lastResult: data.lastResult || '',
 			result: null,
@@ -321,7 +359,7 @@
 
 		/** How many of these answers belong to questions still in the test. */
 		function countKnown( answers ) {
-			return Q.filter( function ( q ) { return answers[ q.id ] !== undefined; } ).length;
+			return Q.filter( function ( q ) { return doneIn( answers, q ); } ).length;
 		}
 
 		/** A simple shape check; the server decides with is_email(). */
@@ -418,18 +456,91 @@
 			return String( Q[ i ].id );
 		}
 
+		function isGap( q ) {
+			return !! q && q.type === 'gap';
+		}
+
+		/** An answer as a gap question takes it: one string per gap. */
+		function shape( q, a ) {
+			var out = [];
+			for ( var g = 0; g < q.gaps; g++ ) {
+				out.push( Array.isArray( a ) && typeof a[ g ] === 'string' ? a[ g ].slice( 0, GAP_MAX ) : '' );
+			}
+			return out;
+		}
+
+		/** The words typed into a gap question so far. */
+		function words( q ) {
+			return shape( q, s.answers[ q.id ] );
+		}
+
+		/** An answer of the kind its question takes, or undefined. */
+		function fit( q, a ) {
+			if ( isGap( q ) ) {
+				return Array.isArray( a ) ? shape( q, a ) : undefined;
+			}
+			return typeof a === 'number' && a >= 0 && a < q.options.length ? a : undefined;
+		}
+
+		/**
+		 * Done: a multiple choice question with an option chosen, a gap
+		 * question with text in every gap.
+		 */
+		function doneIn( answers, q ) {
+			var a = answers[ q.id ];
+			if ( isGap( q ) ) {
+				return q.gaps > 0 && Array.isArray( a ) && shape( q, a ).every( function ( w ) { return w.trim() !== ''; } );
+			}
+			return a !== undefined && ! Array.isArray( a );
+		}
+
+		function done( q ) {
+			return doneIn( s.answers, q );
+		}
+
+		/** Something to check: an option chosen, or text in at least one gap. */
+		function touched( q ) {
+			if ( isGap( q ) ) {
+				return words( q ).some( function ( w ) { return w.trim() !== ''; } );
+			}
+			return done( q );
+		}
+
+		/** A checked question with every point won. */
+		function allRight( q ) {
+			var r = s.revealed[ q.id ];
+			if ( isGap( q ) ) {
+				return !! r && Array.isArray( r.right ) && r.right.length > 0 && r.right.every( Boolean );
+			}
+			return s.answers[ q.id ] === r;
+		}
+
 		function answered() {
-			return Q.filter( function ( q ) { return s.answers[ q.id ] !== undefined; } ).length;
+			return Q.filter( done ).length;
+		}
+
+		function gapsFilled() {
+			return Q.reduce( function ( n, q ) {
+				return n + ( isGap( q ) ? words( q ).filter( function ( w ) { return w.trim() !== ''; } ).length : 0 );
+			}, 0 );
 		}
 
 		function missing() {
 			var out = [];
 			Q.forEach( function ( q, i ) {
-				if ( s.answers[ q.id ] === undefined ) {
+				if ( ! done( q ) ) {
 					out.push( i + 1 );
 				}
 			} );
 			return out;
+		}
+
+		/** The quiet line above the question. */
+		function countText() {
+			if ( ONE ) {
+				return isGap( Q[ 0 ] ) ? gapsFilled() + ' of ' + POINTS + ( POINTS === 1 ? ' gap filled' : ' gaps filled' ) : '';
+			}
+			return 'Question ' + ( s.i + 1 ) + ' of ' + N + ' · ' + ( N - answered() ) + ' left';
 		}
 
 		function hasUnsent() {
@@ -485,7 +596,8 @@
 			var sent = {};
 			Object.keys( s.dirty ).forEach( function ( id ) {
 				if ( s.answers[ id ] !== undefined ) {
-					sent[ id ] = s.answers[ id ];
+					// A copy: a list of words goes on changing as the student types.
+					sent[ id ] = copyAnswer( s.answers[ id ] );
 				}
 			} );
 			s.saving = true;
@@ -495,7 +607,7 @@
 				s.offline = false;
 				clearTimeout( retryTimer );
 				Object.keys( sent ).forEach( function ( id ) {
-					if ( s.answers[ id ] === sent[ id ] ) {
+					if ( sameAnswer( s.answers[ id ], sent[ id ] ) ) {
 						delete s.dirty[ id ];
 					}
 				} );
@@ -512,6 +624,13 @@
 				}
 				goOffline();
 			} );
+		}
+
+		/** Leaving a question: what is waiting goes now, not when the timer says. */
+		function flush() {
+			if ( hasUnsent() ) {
+				saveNow();
+			}
 		}
 
 		function goOffline() {
@@ -565,8 +684,13 @@
 			s.checked = {};
 			s.revealed = state.revealed || {};
 			( state.checked || [] ).forEach( function ( id ) { s.checked[ id ] = true; } );
+			var byId = {};
+			Q.forEach( function ( q ) { byId[ q.id ] = q; } );
 			Object.keys( state.answers || {} ).forEach( function ( id ) {
-				s.answers[ id ] = state.answers[ id ];
+				var a = byId[ id ] ? fit( byId[ id ], state.answers[ id ] ) : undefined;
+				if ( a !== undefined ) {
+					s.answers[ id ] = a;
+				}
 			} );
 
 			var local = readLocal();
@@ -574,12 +698,12 @@
 				var unsent = {};
 				( local.dirty || [] ).forEach( function ( id ) { unsent[ id ] = true; } );
 				Object.keys( local.answers ).forEach( function ( id ) {
-					var known = Q.some( function ( q ) { return String( q.id ) === id; } );
-					if ( ! known || s.checked[ id ] ) {
+					var mine = byId[ id ] ? fit( byId[ id ], local.answers[ id ] ) : undefined;
+					if ( mine === undefined || s.checked[ id ] ) {
 						return;
 					}
-					if ( s.answers[ id ] === undefined || ( unsent[ id ] && s.answers[ id ] !== local.answers[ id ] ) ) {
-						s.answers[ id ] = local.answers[ id ];
+					if ( s.answers[ id ] === undefined || ( unsent[ id ] && ! sameAnswer( s.answers[ id ], mine ) ) ) {
+						s.answers[ id ] = mine;
 						s.dirty[ id ] = true;
 					}
 				} );
@@ -601,7 +725,7 @@
 			// Resume at the first question still open: unanswered, or in
 			// "after each question" mode, not yet checked.
 			var first = Q.findIndex( function ( q ) {
-				return T.feedback === 'now' ? ! s.checked[ q.id ] : s.answers[ q.id ] === undefined;
+				return T.feedback === 'now' ? ! s.checked[ q.id ] : ! done( q );
 			} );
 			go( first < 0 ? N - 1 : first );
 			startedAt = Date.now();
@@ -784,7 +908,7 @@
 				render();
 			}, function () {
 				// Offline: the answers stay in this browser and go with CONTINUE.
-				s.resume.answered = Math.max( s.resume.answered, Object.keys( local.answers ).length );
+				s.resume.answered = Math.max( s.resume.answered, countKnown( local.answers ) );
 				render();
 			} );
 		}
@@ -812,20 +936,88 @@
 			}
 		}
 
+		/**
+		 * A word typed into a gap. The answer is mirrored in this browser at
+		 * once and sent with the delayed save. Nothing is redrawn: the tile,
+		 * the count and the Check button are updated in place, so the cursor
+		 * and the phone keyboard stay where they are.
+		 */
+		function type( field ) {
+			var q = Q[ s.i ];
+			var id = qid( s.i );
+			var g = +field.dataset.g;
+			if ( ! isGap( q ) || s.checked[ id ] || ! ( g >= 0 && g < q.gaps ) ) {
+				return;
+			}
+			var was = done( q );
+			var list = words( q );
+			list[ g ] = String( field.value ).slice( 0, GAP_MAX );
+			s.answers[ id ] = list;
+			s.dirty[ id ] = true;
+			writeLocal();
+			scheduleSave( SAVE_DELAY );
+
+			field.style.width = gapWidth( list[ g ] );
+			var now = done( q );
+			var tile = root.querySelector( '.tbttm-tile[data-go="' + s.i + '"]' );
+			if ( tile ) {
+				tile.classList.toggle( 'is-done', now );
+				tile.classList.toggle( 'is-pop', now && ! was && T.feedback !== 'now' );
+				tile.setAttribute( 'aria-label', 'Question ' + ( s.i + 1 ) + ( now ? ', answered' : '' ) );
+			}
+			var count = root.querySelector( '[data-tbttm-count]' );
+			if ( count ) {
+				count.textContent = countText();
+			}
+			var button = root.querySelector( '[data-act="check"][data-tbttm-main]' );
+			if ( button ) {
+				button.disabled = ! touched( q ) || s.busy;
+			}
+			var warn = root.querySelector( '[data-tbttm-warn]' );
+			if ( warn ) {
+				warn.innerHTML = warnInner();
+				warn.hidden = warn.innerHTML === '';
+			}
+		}
+
+		/** A gap is at least 9 characters wide and grows with what is typed. */
+		function gapWidth( text ) {
+			return Math.max( 9, String( text ).length + 3 ) + 'ch';
+		}
+
+		function focusGap() {
+			var field = root.querySelector( '.tbttm-gap:not(:disabled)' );
+			if ( field ) {
+				field.focus( { preventScroll: true } );
+			}
+		}
+
+		/** Move to another question; what is waiting to be saved goes now. */
+		function leave( i ) {
+			flush();
+			go( i );
+			s.warn = false;
+			s.checkFailed = false;
+			render();
+			focusGap();
+		}
+
 		function check() {
 			var id = qid( s.i );
-			if ( s.busy || s.answers[ id ] === undefined || s.checked[ id ] ) {
+			var q = Q[ s.i ];
+			if ( s.busy || ! touched( q ) || s.checked[ id ] ) {
 				return;
 			}
 			s.busy = true;
 			s.checkFailed = false;
 			render();
-			call( 'POST', 'attempts/' + s.attempt.id + '/check', { question: +id, answer: s.answers[ id ] } ).then( function ( res ) {
+			call( 'POST', 'attempts/' + s.attempt.id + '/check', { question: +id, answer: isGap( q ) ? words( q ) : s.answers[ id ] } ).then( function ( res ) {
 				s.busy = false;
 				s.checked[ id ] = true;
-				s.revealed[ id ] = res.correct;
-				if ( res.answer !== null && res.answer !== undefined ) {
-					s.answers[ id ] = res.answer;
+				s.revealed[ id ] = isGap( q ) ? { right: res.right || [], correct: res.correct || [] } : res.correct;
+				var stored = fit( q, res.answer );
+				if ( stored !== undefined ) {
+					s.answers[ id ] = stored;
 				}
 				delete s.dirty[ id ];
 				writeLocal();
@@ -963,7 +1155,7 @@
 				html += '<figure class="tbttm-cover"><img src="' + esc( T.image ) + '" alt=""></figure>';
 			}
 			html += '<header class="tbttm-start">'
-				+ '<p class="tbttm-eyebrow">Test · ' + plural( n, 'question', 'questions' ) + '</p>'
+				+ '<p class="tbttm-eyebrow">Test · ' + sizeText( n ) + '</p>'
 				+ '<h2 class="tbttm-section-title tbttm-start__title">' + esc( T.title ) + '</h2>'
 				+ ( T.intro ? '<p class="tbttm-start__intro">' + lines( T.intro ) + '</p>' : '' )
 				+ '</header>';
@@ -986,9 +1178,12 @@
 					+ '<div class="tbttm-meter" role="progressbar" aria-label="Answered" aria-valuemin="0" aria-valuemax="' + N + '" aria-valuenow="' + done + '"><i style="width:' + pct + '%"></i></div>'
 					+ '</div>';
 			} else {
-				html += '<p class="tbttm-lead">Read each question and choose one answer. ' + ( T.feedback === 'now'
-					? 'You see the correct answer after each question.'
-					: 'You can go back and change an answer at any time before you finish.' ) + '</p>';
+				var some = Q.some( isGap );
+				html += '<p class="tbttm-lead">' + ( ONLY_GAPS ? 'Type the missing words into the text. '
+					: some ? 'Read each question and choose one answer or type the missing words. '
+					: 'Read each question and choose one answer. ' ) + ( T.feedback === 'now'
+					? ( ONLY_GAPS ? 'You see the correct answers when you check them.' : 'You see the correct answer after each question.' )
+					: ( ONE ? 'You can change an answer at any time before you finish.' : 'You can go back and change an answer at any time before you finish.' ) ) + '</p>';
 			}
 
 			html += facts( N );
@@ -1023,10 +1218,21 @@
 			return html;
 		}
 
+		/**
+		 * What the student will do: "7 gaps" for a test with only gap
+		 * questions, "N questions" for every other test. A draft sends no
+		 * questions, so the server says how many gaps it holds.
+		 */
+		function sizeText( n ) {
+			var gaps = T.draft ? ( data.gaps || 0 ) : ( ONLY_GAPS ? POINTS : 0 );
+			return gaps ? plural( gaps, 'gap', 'gaps' ) : plural( n, 'question', 'questions' );
+		}
+
 		function facts( n ) {
+			var size = sizeText( n ).split( ' ' );
 			var tick = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 			return '<ul class="tbttm-facts">'
-				+ '<li class="tbttm-chip"><strong>' + n + '</strong> ' + ( n === 1 ? 'question' : 'questions' ) + '</li>'
+				+ '<li class="tbttm-chip"><strong>' + size[ 0 ] + '</strong> ' + size[ 1 ] + '</li>'
 				+ ( T.passMark ? '<li class="tbttm-chip"><strong>' + T.passMark + '%</strong> to pass</li>' : '' )
 				+ '<li class="tbttm-chip">' + tick + 'Answers saved as you go</li>'
 				+ '</ul>';
@@ -1052,15 +1258,16 @@
 					continue;
 				}
 				var id = qid( i );
-				var done = s.answers[ id ] !== undefined;
+				var isDone = done( Q[ i ] );
 				var cls = '';
 				if ( T.feedback === 'now' && s.checked[ id ] ) {
-					cls = s.answers[ id ] === s.revealed[ id ] ? ' is-good' : ' is-bad';
-				} else if ( done ) {
+					// Green only when every gap is right.
+					cls = allRight( Q[ i ] ) ? ' is-good' : ' is-bad';
+				} else if ( isDone ) {
 					cls = ' is-done';
 				}
 				html += '<button type="button" class="tbttm-tile' + cls + ( i === s.i ? ' is-here' : '' ) + ( i === pop ? ' is-pop' : '' ) + '" data-go="' + i + '"'
-					+ ' aria-label="Question ' + ( i + 1 ) + ( done ? ', answered' : '' ) + '"' + ( i === s.i ? ' aria-current="step"' : '' ) + '>' + ( i + 1 ) + '</button>';
+					+ ' aria-label="Question ' + ( i + 1 ) + ( isDone ? ', answered' : '' ) + '"' + ( i === s.i ? ' aria-current="step"' : '' ) + '>' + ( i + 1 ) + '</button>';
 			}
 			html += '</div>';
 			if ( pages > 1 ) {
@@ -1069,79 +1276,164 @@
 			return html + '</div>';
 		}
 
+		/** The gap question on screen: its text with a field in each gap. */
+		function gapBody( q, lock ) {
+			var list = words( q );
+			var verdict = lock && s.revealed[ q.id ] ? s.revealed[ q.id ].right || [] : [];
+			return formatGaps( q.body, q.gaps, function ( g ) {
+				return '<input class="tbttm-gap' + ( lock ? ( verdict[ g ] ? ' is-right' : ' is-wrong' ) : '' ) + '" type="text"'
+					+ ' id="tbttm-g-' + T.id + '-' + g + '" data-g="' + g + '" value="' + esc( list[ g ] ) + '" maxlength="' + GAP_MAX + '"'
+					+ ' style="width:' + gapWidth( list[ g ] ) + '"' + ( lock ? ' disabled' : '' )
+					+ ' autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"'
+					+ ' aria-label="Gap ' + ( g + 1 ) + ' of ' + q.gaps + ( lock ? ( verdict[ g ] ? ', correct' : ', incorrect' ) : '' ) + '">';
+			} );
+		}
+
+		/** What a checked gap question says: "Correct." or the points and the right words. */
+		function gapNotice( q ) {
+			var r = s.revealed[ q.id ] || {};
+			var verdict = r.right || [];
+			var correct = r.correct || [];
+			var won = verdict.filter( Boolean ).length;
+			if ( won === q.gaps ) {
+				return '<div class="tbttm-notice tbttm-notice--ok" role="status"><p><strong>Correct.</strong></p></div>';
+			}
+			var wrong = [];
+			for ( var g = 0; g < q.gaps; g++ ) {
+				if ( ! verdict[ g ] ) {
+					wrong.push( '<strong>' + esc( correct[ g ] ) + '</strong>' );
+				}
+			}
+			return '<div class="tbttm-notice tbttm-notice--error" role="status"><p><strong>'
+				+ ( q.gaps > 1 ? won + ' of ' + q.gaps + ' points.' : 'Not quite.' ) + '</strong> Correct: ' + wrong.join( ', ' ) + '</p></div>';
+		}
+
+		/** The unanswered warning's content, or '' when nothing is missing. */
+		function warnInner() {
+			var open = missing();
+			if ( ! s.warn || ! open.length ) {
+				return '';
+			}
+			var force = '<button class="tbttm-btn" type="button" data-act="force">Finish anyway</button>';
+			if ( ONE && isGap( Q[ 0 ] ) ) {
+				var empty = POINTS - gapsFilled();
+				return '<p><strong>' + empty + '</strong> ' + ( empty === 1 ? 'gap is' : 'gaps are' ) + ' still empty.</p>' + force;
+			}
+			if ( ONE ) {
+				return '<p>The question has no answer yet.</p>' + force;
+			}
+			return '<p>' + ( open.length === 1 ? 'Question' : 'Questions' ) + ' <strong>' + open.join( ', ' ) + '</strong> '
+				+ ( open.length === 1 ? 'has' : 'have' ) + ' no answer yet.</p>'
+				+ '<button class="tbttm-btn" type="button" data-go="' + ( open[ 0 ] - 1 ) + '">Go to question ' + open[ 0 ] + '</button>'
+				+ force;
+		}
+
 		function questionScreen() {
 			var q = Q[ s.i ];
 			var id = qid( s.i );
+			var gap = isGap( q );
 			var a = s.answers[ id ];
 			var now = T.feedback === 'now';
 			var lock = now && !! s.checked[ id ];
 			var right = s.revealed[ id ];
 			var last = s.i === N - 1;
 			var pic = T.bulls ? stageAt( s.i ) : '';
-			var gaps = missing();
 
-			var html = '<div class="tbttm-prog">' + tiles()
-				+ '<div class="tbttm-count"><span>Question ' + ( s.i + 1 ) + ' of ' + N + ' · ' + ( N - answered() ) + ' left</span>'
+			var html = '<div class="tbttm-prog">' + ( ONE ? '' : tiles() )
+				+ '<div class="tbttm-count"><span data-tbttm-count>' + countText() + '</span>'
 				+ '<span class="tbttm-spacer"></span><span data-tbttm-status>' + statusHtml() + '</span></div></div>';
 
 			if ( pic && bulls[ pic ] ) {
 				html += '<img class="tbttm-bull" src="' + esc( bulls[ pic ] ) + '" alt="">';
 			}
-			html += '<p class="tbttm-qnum">' + ( s.i + 1 ) + '.</p>';
-			html += '<div class="tbttm-qbody">' + formatBody( q.body ) + '</div>';
+			if ( ! ONE ) {
+				html += '<p class="tbttm-qnum">' + ( s.i + 1 ) + '.</p>';
+			}
 
-			html += '<fieldset class="tbttm-opts' + ( lock ? ' is-locked' : '' ) + '"><legend class="tbttm-sr-only">Answers</legend>';
-			q.options.forEach( function ( o, k ) {
-				var cls = '';
-				var tag = '';
+			if ( gap ) {
+				// With one question the instruction sits above the text.
+				html += ( ONE ? '<p class="tbttm-muted tbttm-ask">Type the missing ' + ( q.gaps === 1 ? 'word' : 'words' ) + ' into the text.</p>' : '' )
+					+ '<div class="tbttm-qbody tbttm-qbody--gaps' + ( lock ? ' is-locked' : '' ) + '">' + gapBody( q, lock ) + '</div>';
 				if ( lock ) {
-					if ( k === right ) {
-						cls = ' is-right';
-						tag = '<span class="tbttm-opt__tag">✓ Correct</span>';
-					} else if ( k === a ) {
-						cls = ' is-wrong';
-						tag = '<span class="tbttm-opt__tag">✗ Your answer</span>';
-					}
-				} else if ( k === a ) {
-					cls = ' is-chosen';
+					html += gapNotice( q );
 				}
-				var rid = 'tbttm-o-' + T.id + '-' + k;
-				html += '<label class="tbttm-opt' + cls + '" for="' + rid + '">'
-					+ '<input type="radio" name="tbttm-ans-' + T.id + '" id="' + rid + '" value="' + k + '"' + ( a === k ? ' checked' : '' ) + ( lock ? ' disabled' : '' ) + '>'
-					+ '<span>' + LETTERS[ k ] + ') ' + esc( o ) + '</span>' + tag + '</label>';
-			} );
-			html += '</fieldset>';
+			} else {
+				html += '<div class="tbttm-qbody">' + formatBody( q.body ) + '</div>';
 
-			if ( lock ) {
-				html += a === right
-					? '<div class="tbttm-notice tbttm-notice--ok" role="status"><p><strong>Correct.</strong></p></div>'
-					: '<div class="tbttm-notice tbttm-notice--error" role="status"><p><strong>Not quite.</strong> The correct answer is ' + LETTERS[ right ] + '.</p></div>';
+				html += '<fieldset class="tbttm-opts' + ( lock ? ' is-locked' : '' ) + '"><legend class="tbttm-sr-only">Answers</legend>';
+				q.options.forEach( function ( o, k ) {
+					var cls = '';
+					var tag = '';
+					if ( lock ) {
+						if ( k === right ) {
+							cls = ' is-right';
+							tag = '<span class="tbttm-opt__tag">✓ Correct</span>';
+						} else if ( k === a ) {
+							cls = ' is-wrong';
+							tag = '<span class="tbttm-opt__tag">✗ Your answer</span>';
+						}
+					} else if ( k === a ) {
+						cls = ' is-chosen';
+					}
+					var rid = 'tbttm-o-' + T.id + '-' + k;
+					html += '<label class="tbttm-opt' + cls + '" for="' + rid + '">'
+						+ '<input type="radio" name="tbttm-ans-' + T.id + '" id="' + rid + '" value="' + k + '"' + ( a === k ? ' checked' : '' ) + ( lock ? ' disabled' : '' ) + '>'
+						+ '<span>' + LETTERS[ k ] + ') ' + esc( o ) + '</span>' + tag + '</label>';
+				} );
+				html += '</fieldset>';
+
+				if ( lock ) {
+					html += a === right
+						? '<div class="tbttm-notice tbttm-notice--ok" role="status"><p><strong>Correct.</strong></p></div>'
+						: '<div class="tbttm-notice tbttm-notice--error" role="status"><p><strong>Not quite.</strong> The correct answer is ' + LETTERS[ right ] + '.</p></div>';
+				}
 			}
 			if ( s.checkFailed ) {
-				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p><strong>We couldn’t check your answer.</strong> Nothing is lost. Check your connection and try again.</p>'
+				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p><strong>We couldn’t check your ' + ( gap && q.gaps > 1 ? 'answers' : 'answer' ) + '.</strong> Nothing is lost. Check your connection and try again.</p>'
 					+ '<button class="tbttm-btn" type="button" data-act="check">Try again</button></div>';
 			}
-			if ( s.warn && gaps.length ) {
-				html += '<div class="tbttm-notice"><p>' + ( gaps.length === 1 ? 'Question' : 'Questions' ) + ' <strong>' + gaps.join( ', ' ) + '</strong> '
-					+ ( gaps.length === 1 ? 'has' : 'have' ) + ' no answer yet.</p>'
-					+ '<button class="tbttm-btn" type="button" data-go="' + ( gaps[ 0 ] - 1 ) + '">Go to question ' + gaps[ 0 ] + '</button>'
-					+ '<button class="tbttm-btn" type="button" data-act="force">Finish anyway</button></div>';
-			}
+			// Kept in the page even when empty, so typing can update it in place.
+			var warn = warnInner();
+			html += '<div class="tbttm-notice" data-tbttm-warn' + ( warn ? '' : ' hidden' ) + '>' + warn + '</div>';
 			if ( s.failed ) {
+				var kept = ONLY_GAPS ? gapsFilled() : answered();
 				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p><strong>We couldn’t send your answers.</strong> Nothing is lost. All '
-					+ answered() + ' answers are saved on this device. Check your connection and try again.</p>'
+					+ kept + ' answers are saved on this device. Check your connection and try again.</p>'
 					+ '<button class="tbttm-btn" type="button" data-act="force"' + ( s.busy ? ' disabled' : '' ) + '>Try again</button></div>';
 			}
 
 			var next = last
-				? '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="finish"' + ( s.busy ? ' disabled' : '' ) + '>Finish test</button>'
-				: '<button class="tbttm-btn tbttm-btn--primary" type="button" data-act="next">Next question</button>';
+				? '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="finish" data-tbttm-main' + ( s.busy ? ' disabled' : '' ) + '>Finish test</button>'
+				: '<button class="tbttm-btn tbttm-btn--primary" type="button" data-act="next" data-tbttm-main>Next question</button>';
 			if ( now && ! lock ) {
-				next = '<button class="tbttm-btn tbttm-btn--primary" type="button" data-act="check"' + ( a === undefined || s.busy ? ' disabled' : '' ) + '>Check answer</button>';
+				// Enabled as soon as one gap has text: a student who cannot
+				// fill every gap is never stuck, and an empty gap is marked wrong.
+				next = '<button class="tbttm-btn tbttm-btn--primary" type="button" data-act="check" data-tbttm-main' + ( ! touched( q ) || s.busy ? ' disabled' : '' ) + '>'
+					+ ( gap && q.gaps > 1 ? 'Check answers' : 'Check answer' ) + '</button>';
 			}
-			html += '<div class="tbttm-row"><button class="tbttm-btn" type="button" data-act="back"' + ( s.i === 0 ? ' disabled' : '' ) + '>Back</button>'
+			html += '<div class="tbttm-row">' + ( ONE ? '' : '<button class="tbttm-btn" type="button" data-act="back"' + ( s.i === 0 ? ' disabled' : '' ) + '>Back</button>' )
 				+ '<span class="tbttm-spacer"></span>' + next + '</div>';
 			return html;
+		}
+
+		/**
+		 * A gap question in the result: its text with the student's words
+		 * put back in. A right word in green; a wrong word crossed out in
+		 * red, followed by the right one in green; an empty gap as "(empty)"
+		 * crossed out.
+		 */
+		function gapReview( item, number ) {
+			var gaps = Array.isArray( item.gaps ) ? item.gaps : [];
+			var given = Array.isArray( item.given ) ? item.given : [];
+			var right = Array.isArray( item.right ) ? item.right : [];
+			return formatGaps( number + String( item.body || '' ), gaps.length, function ( g ) {
+				var word = String( given[ g ] == null ? '' : given[ g ] );
+				if ( right[ g ] ) {
+					return '<b class="tbttm-word is-right">' + esc( word ) + '</b>';
+				}
+				var key = Array.isArray( gaps[ g ] ) && gaps[ g ].length ? String( gaps[ g ][ 0 ] ) : '';
+				return '<s class="tbttm-word is-wrong">' + ( word.trim() ? esc( word ) : '(empty)' ) + '</s> <b class="tbttm-word is-right">' + esc( key ) + '</b>';
+			} );
 		}
 
 		function resultScreen() {
@@ -1171,7 +1463,23 @@
 				+ '<p class="tbttm-comment">' + esc( msg ) + '</p></div>';
 
 			html += '<ol class="tbttm-review">';
-			( r.review || [] ).forEach( function ( item, i ) {
+			var review = r.review || [];
+			review.forEach( function ( item, i ) {
+				// A test with one question shows no question number.
+				var number = review.length === 1 ? '' : ( i + 1 ) + '. ';
+				// An entry without a type is multiple choice: every result
+				// stored before 0.5.0 reads that way.
+				if ( item.type === 'gap' ) {
+					var verdicts = Array.isArray( item.right ) ? item.right : [];
+					var won = verdicts.filter( Boolean ).length;
+					var all = verdicts.length > 0 && won === verdicts.length;
+					html += '<li class="tbttm-review__item ' + ( all ? 'is-ok' : 'is-bad' ) + '">'
+						+ '<span class="tbttm-review__mark" aria-hidden="true">' + ( all ? '✓' : '✗' ) + '</span>'
+						+ '<div class="tbttm-review__q tbttm-review__q--gaps"><span class="tbttm-sr-only">' + ( all ? 'Correct. ' : 'Incorrect. ' ) + '</span>'
+						+ gapReview( item, number ) + '</div>'
+						+ ( verdicts.length > 1 ? '<span class="tbttm-review__a">· ' + won + ' of ' + verdicts.length + ' points</span>' : '' ) + '</li>';
+					return;
+				}
 				var chosen = item.chosen;
 				var ok = chosen !== null && chosen !== undefined && chosen === item.correct;
 				var yours = chosen === null || chosen === undefined ? 'no answer' : esc( item.options[ chosen ] );
@@ -1179,7 +1487,7 @@
 				html += '<li class="tbttm-review__item ' + ( ok ? 'is-ok' : 'is-bad' ) + '">'
 					+ '<span class="tbttm-review__mark" aria-hidden="true">' + ( ok ? '✓' : '✗' ) + '</span>'
 					+ '<div class="tbttm-review__q"><span class="tbttm-sr-only">' + ( ok ? 'Correct. ' : 'Incorrect. ' ) + '</span>'
-					+ formatBody( ( i + 1 ) + '. ' + item.body ) + '</div>'
+					+ formatBody( number + item.body ) + '</div>'
 					+ '<span class="tbttm-review__a">' + ( ok
 						? 'Your answer: <b>' + yours + '</b>'
 						: 'Your answer: <b class="is-yours">' + yours + '</b> · Correct: <b class="is-right">' + correct + '</b>' ) + '</span></li>';
@@ -1224,6 +1532,10 @@
 			if ( ! t.hasAttribute ) {
 				return;
 			}
+			if ( t.classList && t.classList.contains( 'tbttm-gap' ) ) {
+				type( t );
+				return;
+			}
 			var isName = t.hasAttribute( 'data-tbttm-name' );
 			var isEmail = t.hasAttribute( 'data-tbttm-email' );
 			if ( ! isName && ! isEmail ) {
@@ -1253,6 +1565,26 @@
 			}
 		} );
 
+		// Enter in a gap moves to the next gap; in the last gap it does what
+		// the main button does.
+		root.addEventListener( 'keydown', function ( e ) {
+			var t = e.target;
+			if ( e.key !== 'Enter' || e.isComposing || ! t.classList || ! t.classList.contains( 'tbttm-gap' ) ) {
+				return;
+			}
+			e.preventDefault();
+			var fields = Array.prototype.slice.call( root.querySelectorAll( '.tbttm-gap:not(:disabled)' ) );
+			var at = fields.indexOf( t );
+			if ( at >= 0 && at < fields.length - 1 ) {
+				fields[ at + 1 ].focus();
+				return;
+			}
+			var main = root.querySelector( '[data-tbttm-main]' );
+			if ( main && ! main.disabled ) {
+				main.click();
+			}
+		} );
+
 		root.addEventListener( 'keydown', function ( e ) {
 			if ( e.key === 'Enter' && e.target.hasAttribute && ( e.target.hasAttribute( 'data-tbttm-name' ) || e.target.hasAttribute( 'data-tbttm-email' ) ) ) {
 				e.preventDefault();
@@ -1271,10 +1603,7 @@
 				return;
 			}
 			if ( b.dataset.go !== undefined ) {
-				go( +b.dataset.go );
-				s.warn = false;
-				s.checkFailed = false;
-				render();
+				leave( +b.dataset.go );
 				return;
 			}
 			switch ( b.dataset.act ) {
@@ -1294,16 +1623,10 @@
 					check();
 					break;
 				case 'next':
-					go( s.i + 1 );
-					s.warn = false;
-					s.checkFailed = false;
-					render();
+					leave( s.i + 1 );
 					break;
 				case 'back':
-					go( s.i - 1 );
-					s.warn = false;
-					s.checkFailed = false;
-					render();
+					leave( s.i - 1 );
 					break;
 				case 'finish':
 					finish( false );

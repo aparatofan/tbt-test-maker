@@ -645,7 +645,24 @@
 
 		/* ----- rendering ----- */
 
+		function isGapItem( item ) {
+			return item.type === 'gap';
+		}
+
+		/** Points lost on one question: wrong gaps, or one for a wrong choice. */
+		function lost( item ) {
+			if ( isGapItem( item ) ) {
+				return ( Array.isArray( item.right ) ? item.right : [] ).filter( function ( r ) { return ! r; } ).length;
+			}
+			return isRight( item ) ? 0 : 1;
+		}
+
+		// An entry without a type is multiple choice: everything stored
+		// before 0.5.0 reads that way.
 		function isRight( item ) {
+			if ( isGapItem( item ) ) {
+				return Array.isArray( item.right ) && item.right.length > 0 && item.right.every( Boolean );
+			}
 			return item.chosen !== null && item.chosen !== undefined && item.chosen === item.correct;
 		}
 
@@ -662,7 +679,7 @@
 				return '<p class="tbttm-rowline" role="alert"><span>Couldn’t load these answers.</span>'
 					+ '<button type="button" class="tbttm-btn tbttm-btn--small" data-act="retry" data-att="' + a.id + '">Try again</button></p>';
 			}
-			var wrong = got.review.filter( function ( item ) { return ! isRight( item ); } ).length;
+			var wrong = got.review.reduce( function ( sum, item ) { return sum + lost( item ); }, 0 );
 			var html = '<div class="tbttm-rowline tbttm-answers__head"><strong>' + ( wrong ? plural( wrong, 'wrong answer', 'wrong answers' ) : 'Every answer correct' ) + '</strong>'
 				+ '<button type="button" class="tbttm-linkbtn" data-act="all">' + ( showAll ? 'Show wrong answers only' : 'Show all answers' ) + '</button>'
 				+ '<span class="tbttm-spacer"></span>';
@@ -684,6 +701,16 @@
 			got.review.forEach( function ( item, i ) {
 				var ok = isRight( item );
 				if ( ok && ! showAll ) {
+					return;
+				}
+				if ( isGapItem( item ) ) {
+					// The same filled-in text as the student's result page.
+					var verdicts = Array.isArray( item.right ) ? item.right : [];
+					html += '<li><span class="tbttm-alist__mark ' + ( ok ? 'is-ok' : 'is-bad' ) + '" aria-hidden="true">' + ( ok ? '✓' : '✗' ) + '</span>'
+						+ '<div class="tbttm-alist__q tbttm-alist__q--gaps"><span class="tbttm-sr-only">' + ( ok ? 'Correct. ' : 'Incorrect. ' ) + 'Question ' + ( i + 1 ) + '. </span>'
+						+ '<span class="tbttm-alist__n" aria-hidden="true">' + ( i + 1 ) + '.</span>' + filledHtml( item ) + '</div>'
+						+ ( verdicts.length > 1 ? '<span class="tbttm-alist__a">' + verdicts.filter( Boolean ).length + ' of ' + verdicts.length + ' points</span>' : '' )
+						+ '</li>';
 					return;
 				}
 				var unanswered = item.chosen === null || item.chosen === undefined;
@@ -924,6 +951,94 @@
 	}
 
 	/* ---------------------------------------------------------------------
+	 * Fill in the gaps
+	 * ------------------------------------------------------------------- */
+
+	// One gap: brackets with no bracket inside. As TBTTM_Gaps::PATTERN.
+	var GAP = /\[([^\[\]]*)\]/g;
+	var GAP_BODY_MAX = 6000;
+	// A name and a colon at the start of a line, as on the student page.
+	var SPEAKER = /^(\p{Lu}[\p{L} .'’\-]{0,29}): (.*)$/u;
+
+	/** The gaps of a text: a list of accepted answers per gap. */
+	function gapsOf( text ) {
+		return PARSE ? PARSE.gaps( text ) : [];
+	}
+
+	// The validator's problems for a gap question, in its words.
+	var GAP_PROBLEMS = {
+		empty: 'no text',
+		none: 'no gap yet',
+		hollow: 'a gap is empty',
+		open: 'a bracket is not closed',
+		many: 'too many gaps',
+	};
+
+	/**
+	 * A text with gaps as HTML: one paragraph per line with text, a
+	 * speaker's name in bold, and fill( accepted, g ) in place of each gap.
+	 */
+	function gapLines( text, fill ) {
+		var g = 0;
+		return String( text == null ? '' : text ).split( '\n' ).filter( function ( l ) { return l.trim(); } ).map( function ( line ) {
+			var m = line.match( SPEAKER );
+			var html = m ? '<strong>' + esc( m[ 1 ] ) + ':</strong> ' + esc( m[ 2 ] ) : esc( line );
+			return '<p>' + html.replace( GAP, function ( all, inside ) {
+				// Escaped text holds no "|" of its own, so the split is the teacher's.
+				return fill( inside.split( '|' ).map( function ( a ) { return a.trim(); } ).filter( Boolean ), g++ );
+			} ) + '</p>';
+		} ).join( '' );
+	}
+
+	/** The answer key: each gap as a blue word, accepted answers joined by "or". */
+	function keyHtml( text ) {
+		return gapLines( text, function ( accepted ) {
+			return '<span class="tbttm-gchip">' + ( accepted.length ? accepted.join( ' <i>or</i> ' ) : '?' ) + '</span>';
+		} );
+	}
+
+	/**
+	 * A finished gap question with the student's words put back in, marked
+	 * as on the student's result page: a right word in green; a wrong word
+	 * crossed out in red, followed by the right one in green; an empty gap
+	 * as "(empty)" crossed out.
+	 */
+	function filledHtml( item ) {
+		var given = Array.isArray( item.given ) ? item.given : [];
+		var right = Array.isArray( item.right ) ? item.right : [];
+		return gapLines( item.body, function ( accepted, g ) {
+			var word = String( given[ g ] == null ? '' : given[ g ] );
+			if ( right[ g ] ) {
+				return '<b class="tbttm-word is-right">' + esc( word ) + '</b>';
+			}
+			return '<s class="tbttm-word is-wrong">' + ( word.trim() ? esc( word ) : '(empty)' ) + '</s> <b class="tbttm-word is-right">' + ( accepted[ 0 ] || '' ) + '</b>';
+		} );
+	}
+
+	/** The line that stands for a question in a list, with _____ for each gap. */
+	function summaryLine( q ) {
+		var lines = q.body.split( '\n' ).filter( function ( l ) { return l.trim(); } );
+		var last = lines.length ? lines[ lines.length - 1 ] : '';
+		if ( q.type !== 'gap' ) {
+			return last;
+		}
+		var withGap = lines.find( function ( l ) { return gapsOf( l ).length > 0; } );
+		return ( withGap || last ).trim().replace( GAP, '_____' );
+	}
+
+	/** Points: one per multiple choice question, one per gap. */
+	function pointsOf( q ) {
+		return q.type === 'gap' ? gapsOf( q.body ).length : 1;
+	}
+
+	/** What a closed question says beside its text when nothing is wrong. */
+	function tagOf( q ) {
+		return q.type === 'gap'
+			? plural( gapsOf( q.body ).length, 'gap', 'gaps' )
+			: plural( q.options.filter( function ( o ) { return o.trim(); } ).length, 'answer', 'answers' );
+	}
+
+	/* ---------------------------------------------------------------------
 	 * Builder
 	 * ------------------------------------------------------------------- */
 
@@ -935,6 +1050,9 @@
 
 	/** The first thing that keeps a question from being published, or ''. */
 	function problems( q ) {
+		if ( q.type === 'gap' ) {
+			return GAP_PROBLEMS[ PARSE ? PARSE.gapIssue( q.body ) : '' ] || '';
+		}
 		if ( ! q.body.trim() ) {
 			return 'no question text';
 		}
@@ -961,6 +1079,9 @@
 			return {
 				key: uid++,
 				id: q && q.id ? q.id : 0,
+				// Answers typed for the other type are kept while the
+				// builder is open and dropped on save.
+				type: q && q.type === 'gap' ? 'gap' : 'choice',
 				body: q && q.body ? q.body : '',
 				options: q && q.options ? q.options.slice() : [ '', '', '' ],
 				correct: q && q.correct !== undefined && q.correct !== null ? q.correct : null,
@@ -1017,22 +1138,37 @@
 		function questionHtml( q, i ) {
 			var open = openQ === q.key;
 			var p = problems( q );
-			var lines = q.body.split( '\n' ).filter( function ( l ) { return l.trim(); } );
-			var last = lines.length ? lines[ lines.length - 1 ] : '';
-			var filled = q.options.filter( function ( o ) { return o.trim(); } ).length;
+			var last = summaryLine( q );
+			var gap = q.type === 'gap';
 			var n = d.questions.length;
 			var html = '<div class="tbttm-q' + ( open ? ' is-open' : '' ) + ( showBad && p ? ' is-bad' : '' ) + '" id="tbttm-q-' + q.key + '">'
 				+ '<div class="tbttm-q__head"><span class="tbttm-q__n">' + ( i + 1 ) + '</span>'
 				+ '<button type="button" class="tbttm-q__sum' + ( last ? '' : ' is-blank' ) + '" data-act="toggle" data-q="' + q.key + '" aria-expanded="' + open + '" data-sum="' + q.key + '">'
 				+ ( last ? esc( last ) : 'New question' ) + '</button>'
-				+ '<span class="tbttm-q__status' + ( p && showBad ? ' is-miss' : '' ) + '" data-status="' + q.key + '">' + esc( p || plural( filled, 'answer', 'answers' ) ) + '</span>'
+				+ '<span class="tbttm-q__status' + ( p && showBad ? ' is-miss' : '' ) + '" data-status="' + q.key + '">' + esc( p || tagOf( q ) ) + '</span>'
 				+ '<button type="button" class="tbttm-icon" data-act="up" data-q="' + q.key + '"' + ( i === 0 ? ' disabled' : '' ) + ' aria-label="Move question ' + ( i + 1 ) + ' up">↑</button>'
 				+ '<button type="button" class="tbttm-icon" data-act="down" data-q="' + q.key + '"' + ( i === n - 1 ? ' disabled' : '' ) + ' aria-label="Move question ' + ( i + 1 ) + ' down">↓</button>'
 				+ '<button type="button" class="tbttm-icon tbttm-icon--del" data-act="delq" data-q="' + q.key + '" aria-label="Remove question ' + ( i + 1 ) + '">×</button>'
 				+ '</div>';
 			if ( open ) {
 				html += '<div class="tbttm-q__body">'
-					+ '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-qt-' + q.key + '">Question</label>'
+					+ '<div class="tbttm-seg" role="radiogroup" aria-label="Question type">'
+					+ '<label><input type="radio" name="tbttm-type-' + q.key + '" id="tbttm-type-' + q.key + '-choice" data-q="' + q.key + '" data-type="choice"' + ( gap ? '' : ' checked' ) + '>Multiple choice</label>'
+					+ '<label><input type="radio" name="tbttm-type-' + q.key + '" id="tbttm-type-' + q.key + '-gap" data-q="' + q.key + '" data-type="gap"' + ( gap ? ' checked' : '' ) + '>Fill in the gaps</label>'
+					+ '</div>';
+			}
+			if ( open && gap ) {
+				html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-qt-' + q.key + '">Text</label>'
+					+ '<textarea class="tbttm-input tbttm-input--content" id="tbttm-qt-' + q.key + '" data-q="' + q.key + '" data-f="body" rows="5" maxlength="' + GAP_BODY_MAX + '"'
+					+ ' placeholder="I couldn’t agree [more].">' + esc( q.body ) + '</textarea>'
+					+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn tbttm-btn--small" data-act="mkgap" data-q="' + q.key + '">Make a gap</button>'
+					+ '<span class="tbttm-hint">Select a word and click, or type the square brackets yourself. Two accepted answers: [don’t|do not]. A sentence, a dialogue or a whole paragraph all work.</span></div></div>'
+					+ '<div class="tbttm-field"><span class="tbttm-field__label">Answer key</span>'
+					+ '<div class="tbttm-key" data-key="' + q.key + '">' + ( keyHtml( q.body ) || '<p class="tbttm-hint">Nothing yet.</p>' ) + '</div>'
+					+ '<span class="tbttm-hint">The student sees an empty box in place of each blue word. Each gap is one point. Capitals, extra spaces and the kind of apostrophe do not matter.</span></div>'
+					+ '</div>';
+			} else if ( open ) {
+				html += '<div class="tbttm-field"><label class="tbttm-field__label" for="tbttm-qt-' + q.key + '">Question</label>'
 					+ '<textarea class="tbttm-input tbttm-input--content" id="tbttm-qt-' + q.key + '" data-q="' + q.key + '" data-f="body" rows="4" maxlength="2000"'
 					+ ' placeholder="Tom: This weather is just horrible today.&#10;Jenny: You can say that again!&#10;&#10;Co Jenny ma na myśli?">' + esc( q.body ) + '</textarea>'
 					+ '<span class="tbttm-hint">Start a line with a name and a colon, like “Tom:”, and the name shows in bold. Put *stars* around words to show them in italics.</span></div>'
@@ -1050,6 +1186,12 @@
 			return html + '</div>';
 		}
 
+		/** "5 questions, 7 points. Click a question to open it." */
+		function countLine() {
+			var points = d.questions.reduce( function ( sum, q ) { return sum + pointsOf( q ); }, 0 );
+			return plural( d.questions.length, 'question', 'questions' ) + ', ' + plural( points, 'point', 'points' ) + '. Click a question to open it.';
+		}
+
 		function importerHtml() {
 			var rows = imp.rows;
 			var good = rows ? rows.filter( function ( r ) { return ! r.problem; } ) : [];
@@ -1057,7 +1199,7 @@
 			var html = '<div class="tbttm-imp" id="tbttm-imp">'
 				+ '<h3 class="tbttm-imp__title">Import questions</h3>'
 				+ '<div class="tbttm-field"><span class="tbttm-field__label">1. Use this layout</span>'
-				+ '<span class="tbttm-hint">One question per row. Up to six answers (answer_a to answer_f). In “correct”, put the letter of the right answer. For a dialogue, put each line on a new line inside the question cell (Alt+Enter in Excel).</span>'
+				+ '<span class="tbttm-hint">One question per row. Up to six answers (answer_a to answer_f). In “correct”, put the letter of the right answer. For a dialogue, put each line on a new line inside the question cell (Alt+Enter in Excel). For fill in the gaps, use only the question column: one sentence per row, with each answer in square brackets.</span>'
 				+ '<div class="tbttm-tblwrap"><table class="tbttm-table"><thead><tr>'
 				+ TEMPLATE[ 0 ].map( function ( c ) { return '<th>' + c + '</th>'; } ).join( '' ) + '</tr></thead><tbody>'
 				+ TEMPLATE.slice( 1 ).map( function ( r ) {
@@ -1079,14 +1221,17 @@
 						+ ( bad ? ', ' + plural( bad, 'row', 'rows' ) + ' with a problem. Rows with a problem are left out.' : '.' ) + '</span>'
 						+ '<div class="tbttm-tblwrap"><table class="tbttm-table"><thead><tr><th>Row</th><th>Question</th><th>Answers</th><th>Correct</th><th>Check</th></tr></thead><tbody>'
 						+ rows.map( function ( r ) {
-							return '<tr' + ( r.problem ? ' class="is-bad"' : '' ) + '><td>' + r.row + '</td><td class="tbttm-table__q">' + esc( r.text ) + '</td>'
-								+ '<td>' + r.opts.map( function ( o, k ) { return LETTERS[ k ] + ') ' + esc( o ); } ).join( '\n' ) + '</td>'
-								+ '<td>' + ( r.key === null ? '' : LETTERS[ r.key ] ) + '</td>'
+							var isGap = r.type === 'gap';
+							// A gap row shows its answer key and its gaps; Correct stays empty.
+							return '<tr' + ( r.problem ? ' class="is-bad"' : '' ) + '><td>' + r.row + '</td>'
+								+ '<td class="tbttm-table__q' + ( isGap ? ' tbttm-table__key' : '' ) + '">' + ( isGap ? keyHtml( r.text ) : esc( r.text ) ) + '</td>'
+								+ '<td>' + ( isGap ? plural( r.gaps.length, 'gap', 'gaps' ) : r.opts.map( function ( o, k ) { return LETTERS[ k ] + ') ' + esc( o ); } ).join( '\n' ) ) + '</td>'
+								+ '<td>' + ( isGap || r.key === null ? '' : LETTERS[ r.key ] ) + '</td>'
 								+ '<td>' + ( r.problem ? '<span class="tbttm-prob">' + esc( r.problem ) + '</span>' : '<span class="tbttm-fine">✓</span>' ) + '</td></tr>';
 						} ).join( '' )
 						+ '</tbody></table></div>';
 				} else {
-					html += '<p class="tbttm-note tbttm-note--error">No rows found. Paste at least one row with a question, two answers and the correct letter.</p>';
+					html += '<p class="tbttm-note tbttm-note--error">No rows found. Paste at least one row with a question, two answers and the correct letter, or a sentence with an answer in square brackets.</p>';
 				}
 				html += '</div>';
 			}
@@ -1254,7 +1399,7 @@
 
 			// 3. Questions
 			html += '<section class="tbttm-stage tbttm-stage--numbered">'
-				+ stageHead( 3, 'Questions', plural( n, 'question', 'questions' ) + '. Click a question to open it. Mark the correct answer with the circle.' )
+				+ stageHead( 3, 'Questions', '<span data-tbttm-count>' + countLine() + '</span>' )
 				+ d.questions.map( questionHtml ).join( '' )
 				+ '<div class="tbttm-rowline"><button type="button" class="tbttm-btn" data-act="addq" id="tbttm-addq"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Add question</button>'
 				+ ( imp ? '' : '<button type="button" class="tbttm-btn tbttm-btn--ghost" data-act="imp-open"' + ( n >= MAX_Q ? ' disabled' : '' ) + '>Import questions</button>' )
@@ -1309,7 +1454,11 @@
 				email_result: !! d.email_result,
 				status: status,
 				questions: d.questions.map( function ( q ) {
-					return { id: q.id || 0, body: q.body, options: q.options, correct: q.correct };
+					// Only what the question's type uses is sent: answers
+					// typed for the other type are dropped on save.
+					return q.type === 'gap'
+						? { id: q.id || 0, type: 'gap', body: q.body }
+						: { id: q.id || 0, type: 'choice', body: q.body, options: q.options, correct: q.correct };
 				} ),
 			};
 		}
@@ -1387,8 +1536,9 @@
 					if ( q ) {
 						q.id = sq.id;
 						q.body = sq.body;
-						q.options = sq.options.slice();
-						q.correct = sq.correct;
+						q.type = sq.type === 'gap' ? 'gap' : 'choice';
+						q.options = q.type === 'gap' ? [ '', '', '' ] : sq.options.slice();
+						q.correct = q.type === 'gap' ? null : sq.correct;
 					}
 				} );
 				dirty = false;
@@ -1530,7 +1680,7 @@
 			var add = good.slice( 0, room );
 			var left = good.length - add.length;
 			add.forEach( function ( r ) {
-				d.questions.push( mkq( { body: r.text, options: r.opts, correct: r.key } ) );
+				d.questions.push( r.type === 'gap' ? mkq( { type: 'gap', body: r.text.slice( 0, GAP_BODY_MAX ) } ) : mkq( { body: r.text, options: r.opts, correct: r.key } ) );
 			} );
 			imp = null;
 			touch();
@@ -1576,10 +1726,13 @@
 			}
 		} );
 
-		/** Update a question's closed-row summary and status while typing. */
+		/**
+		 * Update a question's closed-row summary and status while typing,
+		 * and for a gap question its answer key and the points count. The
+		 * field itself is never redrawn, so the cursor never jumps.
+		 */
 		function refreshHead( q ) {
-			var lines = q.body.split( '\n' ).filter( function ( l ) { return l.trim(); } );
-			var last = lines.length ? lines[ lines.length - 1 ] : '';
+			var last = summaryLine( q );
 			var sum = root.querySelector( '[data-sum="' + q.key + '"]' );
 			if ( sum ) {
 				sum.textContent = last || 'New question';
@@ -1588,9 +1741,52 @@
 			var st = root.querySelector( '[data-status="' + q.key + '"]' );
 			if ( st ) {
 				var p = problems( q );
-				st.textContent = p || plural( q.options.filter( function ( o ) { return o.trim(); } ).length, 'answer', 'answers' );
+				st.textContent = p || tagOf( q );
 				st.classList.toggle( 'is-miss', !! ( p && showBad ) );
 			}
+			var key = root.querySelector( '[data-key="' + q.key + '"]' );
+			if ( key ) {
+				key.innerHTML = keyHtml( q.body ) || '<p class="tbttm-hint">Nothing yet.</p>';
+			}
+			var count = root.querySelector( '[data-tbttm-count]' );
+			if ( count ) {
+				count.textContent = countLine();
+			}
+		}
+
+		/**
+		 * Make a gap: wrap the selected text in brackets, leaving the spaces
+		 * around the selection outside them. Nothing happens when nothing is
+		 * selected or the selection already holds a bracket.
+		 */
+		function makeGap( q ) {
+			var field = document.getElementById( 'tbttm-qt-' + q.key );
+			if ( ! field ) {
+				return;
+			}
+			var from = field.selectionStart;
+			var to = field.selectionEnd;
+			var picked = field.value.slice( from, to );
+			var core = picked.trim();
+			field.focus();
+			var before = field.value.slice( 0, from );
+			// Nothing selected, a bracket in the selection, or a selection
+			// that already sits inside a gap: brackets do not nest.
+			if ( from === to || ! core || /[\[\]]/.test( core ) || before.lastIndexOf( '[' ) > before.lastIndexOf( ']' ) ) {
+				return;
+			}
+			var lead = picked.match( /^\s*/ )[ 0 ];
+			var trail = picked.match( /\s*$/ )[ 0 ];
+			var next = field.value.slice( 0, from ) + lead + '[' + core + ']' + trail + field.value.slice( to );
+			if ( next.length > GAP_BODY_MAX ) {
+				return;
+			}
+			field.value = next;
+			q.body = next;
+			var at = from + lead.length + core.length + 2;
+			field.setSelectionRange( at, at );
+			refreshHead( q );
+			touch();
 		}
 
 		root.addEventListener( 'change', function ( e ) {
@@ -1643,6 +1839,13 @@
 				} );
 				return;
 			}
+			if ( t.type === 'radio' && t.dataset.type && t.dataset.q ) {
+				// Switching type keeps the text.
+				findQ( t.dataset.q ).type = t.dataset.type === 'gap' ? 'gap' : 'choice';
+				touch();
+				render( t.id );
+				return;
+			}
 			if ( t.type === 'radio' && t.dataset.k !== undefined ) {
 				findQ( t.dataset.q ).correct = +t.dataset.k;
 				touch();
@@ -1683,7 +1886,10 @@
 					if ( d.questions.length >= MAX_Q ) {
 						return;
 					}
-					var nq = mkq( null );
+					// A new question takes the type of the question before
+					// it; the first question of a test is multiple choice.
+					var before = d.questions[ d.questions.length - 1 ];
+					var nq = mkq( before ? { type: before.type } : null );
 					d.questions.push( nq );
 					openQ = nq.key;
 					msg = null;
@@ -1705,6 +1911,9 @@
 					d.questions.splice( qi + 1, 0, d.questions.splice( qi, 1 )[ 0 ] );
 					touch();
 					render();
+					return;
+				case 'mkgap':
+					makeGap( q );
 					return;
 				case 'addo':
 					if ( q.options.length < MAX_OPTIONS ) {

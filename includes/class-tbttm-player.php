@@ -196,11 +196,10 @@ class TBTTM_Player {
 		if ( ! $is_draft && ! $is_guest ) {
 			$open = TBTTM_DB::get_user_attempt( (int) $test->id, $user_id, TBTTM_DB::ATTEMPT_IN_PROGRESS );
 			if ( $open ) {
-				$ids    = array_column( $questions, 'id' );
-				$given  = array_intersect( array_keys( TBTTM_Attempts::answers( $open ) ), $ids );
 				$resume = array(
 					'id'       => (int) $open->id,
-					'answered' => count( $given ),
+					// A gap question counts only when every gap has text.
+					'answered' => TBTTM_Attempts::answered( TBTTM_Attempts::answers( $open ), $questions ),
 				);
 			}
 			$done = TBTTM_DB::get_user_attempt( (int) $test->id, $user_id, TBTTM_DB::ATTEMPT_FINISHED );
@@ -223,9 +222,15 @@ class TBTTM_Player {
 				'image'    => $image_url ? (string) $image_url : '',
 				'draft'    => $is_draft,
 			),
-			// id, body and options only: the answer key never reaches the page.
+			// The answer key never reaches the page: a multiple choice
+			// question goes without its key, a gap question with every gap
+			// emptied (TBTTM_Gaps::public_body()), never its stored body.
 			'questions'  => $is_draft ? array() : TBTTM_Attempts::public_questions( $questions ),
 			'count'      => count( $questions ),
+			// How many gaps a test with only gap questions holds, else 0:
+			// the start screen says "7 gaps" in place of "N questions". A
+			// draft sends no questions, so it cannot count them itself.
+			'gaps'       => self::only_gaps( $questions ),
 			'resume'     => $resume,
 			'lastResult' => $last_result,
 			'guest'      => $is_guest,
@@ -258,6 +263,24 @@ class TBTTM_Player {
 			. '</section>';
 
 		return $this->wrap( $head . $app );
+	}
+
+	/**
+	 * The number of gaps in a test made only of gap questions; 0 for any
+	 * other test.
+	 *
+	 * @param array[] $questions The test's questions.
+	 * @return int
+	 */
+	private static function only_gaps( array $questions ) {
+		$gaps = 0;
+		foreach ( $questions as $q ) {
+			if ( ! TBTTM_Attempts::is_gap( $q ) ) {
+				return 0;
+			}
+			$gaps += count( $q['gaps'] );
+		}
+		return $gaps;
 	}
 
 	/**

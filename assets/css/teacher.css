@@ -788,6 +788,53 @@ body {
 	border-top: 1px solid var(--tbt-border);
 }
 
+/* ---------- Fill in the gaps: the answer key ---------- */
+
+/* The text again, under the field, with each gap as a blue word. */
+.tbttm .tbttm-key {
+	padding: 16px;
+	border: 1px dashed var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	background: var(--tbt-canvas);
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 17px;
+	line-height: 2.1;
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-key p {
+	margin: 0;
+}
+
+.tbttm .tbttm-gchip {
+	display: inline-block;
+	padding: 0 10px;
+	border: 1px solid var(--tbt-border);
+	border-bottom: 2px solid var(--tbt-blue);
+	border-radius: 8px;
+	background: var(--tbt-surface);
+	color: var(--tbt-blue-dark);
+	font-weight: 600;
+	line-height: 1.5;
+}
+
+.tbttm .tbttm-gchip i {
+	color: var(--tbttm-faint);
+	font-style: normal;
+	font-weight: 400;
+}
+
+/* A gap row in the importer's check table shows the same key. */
+.tbttm .tbttm-table td.tbttm-table__key {
+	line-height: 2;
+	white-space: normal;
+}
+
+.tbttm .tbttm-table__key p {
+	margin: 0;
+}
+
 .tbttm .tbttm-icon {
 	flex: none;
 	width: 40px;
@@ -1340,6 +1387,21 @@ body {
 
 .tbttm .tbttm-alist__a .is-right {
 	color: var(--tbt-success);
+}
+
+/* A gap question in an attempt: the text with the student's words put back
+   in, as on the student's result page. */
+.tbttm .tbttm-alist__q--gaps {
+	line-height: 1.8;
+}
+
+.tbttm .tbttm-alist__q--gaps p {
+	margin: 0;
+}
+
+.tbttm .tbttm-alist__n {
+	float: left;
+	margin-right: 6px;
 }
 
 /* Hardest questions. */
