@@ -507,7 +507,9 @@ body {
 
 .tbttm .tbttm-hint {
 	color: var(--tbt-muted);
+	font-family: 'TBTTM Roboto Light', var(--tbt-font-ui);
 	font-size: 15px;
+	font-weight: 300;
 	line-height: 1.5;
 }
 
@@ -603,20 +605,50 @@ body {
 	gap: 32px;
 }
 
+/* Class and Lesson side by side, across the full width of Settings. */
+.tbttm .tbttm-classpair {
+	grid-column: 1 / -1;
+}
+
+.tbttm .tbttm-classpair__cols {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
+.tbttm .tbttm-classpair .tbttm-hint strong {
+	color: var(--tbttm-accent);
+	font-family: var(--tbt-font-ui);
+	font-weight: 600;
+}
+
+@media (max-width: 640px) {
+	.tbttm .tbttm-classpair__cols {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Two-option controls: a blue outline, the chosen option solid blue, the
+   same signal a switch gives when it is on. */
 .tbttm .tbttm-seg {
 	display: inline-flex;
 	align-self: flex-start;
 	overflow: hidden;
-	border: 1px solid var(--tbt-border);
+	border: 1.5px solid var(--tbt-blue);
 	border-radius: var(--tbt-radius-control);
 }
 
 .tbttm .tbttm-seg label {
 	margin: 0;
 	padding: 10px 16px;
-	color: var(--tbt-muted);
+	background: var(--tbt-surface);
+	color: var(--tbt-blue-dark);
 	font-weight: 500;
 	cursor: pointer;
+}
+
+.tbttm .tbttm-seg label + label {
+	border-left: 1.5px solid var(--tbt-blue);
 }
 
 .tbttm .tbttm-seg input {
@@ -625,14 +657,22 @@ body {
 	pointer-events: none;
 }
 
-.tbttm .tbttm-seg label:has(input:checked) {
+.tbttm .tbttm-seg label:hover {
 	background: var(--tbt-selected-bg);
-	color: var(--tbt-blue-dark);
+}
+
+.tbttm .tbttm-seg label:has(input:checked) {
+	background: var(--tbt-blue);
+	color: var(--tbttm-white);
 	font-weight: 600;
 }
 
 .tbttm .tbttm-seg label:has(input:focus-visible) {
-	box-shadow: inset var(--tbt-focus-ring);
+	box-shadow: inset 0 0 0 2px var(--tbt-blue-dark);
+}
+
+.tbttm .tbttm-seg label:has(input:checked:focus-visible) {
+	box-shadow: inset 0 0 0 2px var(--tbttm-white);
 }
 
 .tbttm .tbttm-pct {
@@ -659,7 +699,7 @@ body {
 	height: 26px;
 	margin: 0;
 	border-radius: var(--tbt-radius-pill);
-	background: var(--tbt-border);
+	background: var(--tbttm-faint);
 	cursor: pointer;
 	-webkit-appearance: none;
 	appearance: none;
@@ -689,6 +729,19 @@ body {
 .tbttm .tbttm-switch input:focus-visible {
 	box-shadow: var(--tbt-focus-ring);
 	outline: none;
+}
+
+/* Outlined buttons on the teacher page: a stronger blue outline than the
+   shared default. Primary, ghost, danger and CTA buttons keep their own look. */
+.tbttm.tbttm--teacher .tbttm-btn:not(.tbttm-btn--primary, .tbttm-btn--ghost, .tbttm-btn--danger, .tbttm-btn--cta) {
+	border: 1.5px solid var(--tbt-blue);
+	background: var(--tbt-surface);
+	color: var(--tbt-blue-dark);
+}
+
+.tbttm.tbttm--teacher .tbttm-btn:not(.tbttm-btn--primary, .tbttm-btn--ghost, .tbttm-btn--danger, .tbttm-btn--cta):hover {
+	border-color: var(--tbt-blue-dark);
+	background: var(--tbt-selected-bg);
 }
 
 /* The feature image button is a label for a hidden file field: show the
