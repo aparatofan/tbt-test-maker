@@ -19,6 +19,9 @@ class TBTTM_Urls {
 	/** Query parameter opening an empty builder. */
 	const NEW_PARAM = 'tbttm_new';
 
+	/** Query parameter keeping the library's class filter: a class ID or "none". */
+	const CLASS_PARAM = 'tbttm_class';
+
 	/**
 	 * The student page: the published page holding [tbt_test], or ''.
 	 *

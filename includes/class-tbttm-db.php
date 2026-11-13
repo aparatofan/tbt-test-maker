@@ -11,9 +11,8 @@
  *                             a snapshot of what they saw.
  *
  * Column names are a data contract: add columns, never rename them. Several
- * columns (access, class_id, lesson_id, certificate, email_result, guest_*)
- * belong to later releases and are created now so those releases need no
- * schema change.
+ * columns (certificate, email_result, guest_email) belong to later releases
+ * and are created now so those releases need no schema change.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -272,6 +271,35 @@ class TBTTM_DB {
 	}
 
 	/**
+	 * A class's published tests, newest first, with their question counts.
+	 * For TBT Notes: scoped by class, not by owner, because the readers are
+	 * the class's students.
+	 *
+	 * @param int $class_id Notes class ID.
+	 * @return object[] Rows with id, slug, title, lesson_id, question_count.
+	 */
+	public static function published_tests_for_class( $class_id ) {
+		global $wpdb;
+		$tests     = self::tests_table();
+		$questions = self::questions_table();
+		$class_id  = (int) $class_id;
+		if ( $class_id <= 0 ) {
+			return array();
+		}
+		return (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT t.id, t.slug, t.title, t.lesson_id,
+					( SELECT COUNT(*) FROM {$questions} q WHERE q.test_id = t.id ) AS question_count
+				FROM {$tests} t
+				WHERE t.class_id = %d AND t.status = %s
+				ORDER BY t.published_at DESC, t.id DESC",
+				$class_id,
+				self::STATUS_PUBLISHED
+			)
+		);
+	}
+
+	/**
 	 * Insert a test with its questions.
 	 *
 	 * @param array  $clean    Output of TBTTM_Validator::sanitise() or validate().
@@ -342,6 +370,9 @@ class TBTTM_DB {
 			'feedback'  => 'now' === $clean['feedback'] ? 'now' : 'end',
 			'bulls'     => $clean['bulls'] ? 1 : 0,
 			'pass_mark' => null === $clean['pass_mark'] ? null : (int) $clean['pass_mark'],
+			'access'    => isset( $clean['access'] ) && 'open' === $clean['access'] ? 'open' : 'login',
+			'class_id'  => empty( $clean['class_id'] ) ? null : (int) $clean['class_id'],
+			'lesson_id' => empty( $clean['class_id'] ) || empty( $clean['lesson_id'] ) ? null : (int) $clean['lesson_id'],
 		);
 	}
 
@@ -397,7 +428,8 @@ class TBTTM_DB {
 
 	/**
 	 * Copy a test and its questions as a new draft: "Title (copy)", a new
-	 * slug, no attempts. The questions are copied as stored.
+	 * slug, no attempts. The questions are copied as stored. The copy keeps
+	 * the class and who can take it, but not the lesson.
 	 *
 	 * @param object $row      Test row to copy.
 	 * @param int    $owner_id Owner of the copy.
@@ -424,6 +456,8 @@ class TBTTM_DB {
 				'feedback'   => (string) $row->feedback,
 				'bulls'      => (int) $row->bulls,
 				'pass_mark'  => null === $row->pass_mark ? null : (int) $row->pass_mark,
+				'access'     => 'open' === $row->access ? 'open' : 'login',
+				'class_id'   => empty( $row->class_id ) ? null : (int) $row->class_id,
 				'created_at' => $now,
 				'updated_at' => $now,
 			)
@@ -562,11 +596,12 @@ class TBTTM_DB {
 	/**
 	 * Start a new attempt.
 	 *
-	 * @param int $test_id Test ID.
-	 * @param int $user_id User ID.
+	 * @param int    $test_id    Test ID.
+	 * @param int    $user_id    User ID, or 0 for a guest.
+	 * @param string $guest_name The guest's name; '' for a user.
 	 * @return object|null The new row.
 	 */
-	public static function insert_attempt( $test_id, $user_id ) {
+	public static function insert_attempt( $test_id, $user_id, $guest_name = '' ) {
 		global $wpdb;
 		$now = self::now();
 		$ok  = $wpdb->insert(
@@ -574,6 +609,7 @@ class TBTTM_DB {
 			array(
 				'test_id'    => (int) $test_id,
 				'user_id'    => (int) $user_id,
+				'guest_name' => (int) $user_id > 0 ? '' : (string) $guest_name,
 				'token'      => bin2hex( random_bytes( 16 ) ),
 				'status'     => self::ATTEMPT_IN_PROGRESS,
 				'answers'    => '{}',

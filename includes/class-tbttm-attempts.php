@@ -172,6 +172,7 @@ class TBTTM_Attempts {
 		$percent   = (int) $attempt->percent;
 		return array(
 			'token'       => (string) $attempt->token,
+			'name'        => self::name( $attempt ),
 			'score'       => (int) $attempt->score,
 			'total'       => (int) $attempt->total,
 			'percent'     => $percent,
@@ -180,6 +181,21 @@ class TBTTM_Attempts {
 			'review'      => is_array( $review ) ? array_values( $review ) : array(),
 			'finished_at' => (string) $attempt->finished_at,
 		);
+	}
+
+	/**
+	 * Whose attempt it is, for the result: the guest's name as typed, or the
+	 * user's display name.
+	 *
+	 * @param object $attempt Attempt row.
+	 * @return string
+	 */
+	public static function name( $attempt ) {
+		if ( (int) $attempt->user_id <= 0 ) {
+			return (string) $attempt->guest_name;
+		}
+		$user = get_userdata( (int) $attempt->user_id );
+		return $user ? (string) $user->display_name : '';
 	}
 
 	/**

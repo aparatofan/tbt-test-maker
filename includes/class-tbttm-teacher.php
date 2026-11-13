@@ -74,6 +74,11 @@ class TBTTM_Teacher {
 				'maxQuestions' => TBTTM_Validator::QUESTIONS_MAX,
 				'imageMaxBytes' => TBTTM_Rest::IMAGE_MAX_BYTES,
 				'imageMaxSide'  => TBTTM_Rest::IMAGE_MAX_SIDE,
+				// TBT Notes: whether rows name a class at all, and the teacher's
+				// own classes for the builder's Class field, A–Z.
+				'notes'      => TBTTM_Classes::available(),
+				'classes'    => TBTTM_Rest::classes_for( get_current_user_id() ),
+				'classParam' => TBTTM_Urls::CLASS_PARAM,
 			)
 		);
 	}
@@ -170,11 +175,28 @@ class TBTTM_Teacher {
 	/**
 	 * The library: the Admin Bar and the card grid, painted by the server so
 	 * the empty state is decided before the page appears. The script takes
-	 * over for search, copying links and deleting.
+	 * over for search, the class filter, copying links and deleting.
+	 *
+	 * The class filter is built as Translation Drill builds its own: "All
+	 * classes", one entry per class that has a test (A–Z, with a count), then
+	 * "Not in a class". The choice lives in the URL, so the server paints the
+	 * filtered list on a reload.
 	 */
 	private function render_library() {
-		$rows    = TBTTM_DB::get_owned_tests( get_current_user_id() );
-		$total   = count( $rows );
+		$user_id = get_current_user_id();
+		$all     = TBTTM_Rest::library( $user_id );
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter.
+		$class = isset( $_GET[ TBTTM_Urls::CLASS_PARAM ] ) ? sanitize_key( wp_unslash( $_GET[ TBTTM_Urls::CLASS_PARAM ] ) ) : '';
+		// Only a choice still on offer: anything else shows every test.
+		$known = 'none' === $class
+			? $all['unclassed'] > 0
+			: in_array( $class, array_map( 'strval', array_column( $all['classes'], 'id' ) ), true );
+		if ( ! $all['classes'] || ! $known ) {
+			$class = '';
+		}
+		$library = '' === $class ? $all : TBTTM_Rest::library( $user_id, '', $class );
+		$tests   = $library['tests'];
+		$total   = $library['total'];
 		$empty   = 0 === $total;
 		$new_url = TBTTM_Urls::new_url();
 		$uid     = wp_unique_id( 'tbttm-' );
@@ -199,6 +221,28 @@ class TBTTM_Teacher {
 							<button type="button" class="tbttm-libbar__clear" data-tbttm-search-clear
 								aria-label="<?php esc_attr_e( 'Clear search', 'tbt-test-maker' ); ?>" hidden>&times;</button>
 						</div>
+						<?php if ( $all['classes'] ) : ?>
+							<label class="tbttm-sr-only" for="<?php echo esc_attr( $uid ); ?>-class"><?php esc_html_e( 'Class', 'tbt-test-maker' ); ?></label>
+							<select id="<?php echo esc_attr( $uid ); ?>-class" class="tbttm-select tbttm-libbar__class<?php echo '' !== $class ? ' is-set' : ''; ?>" data-tbttm-class>
+								<option value=""><?php esc_html_e( 'All classes', 'tbt-test-maker' ); ?></option>
+								<?php foreach ( $all['classes'] as $option ) : ?>
+									<option value="<?php echo esc_attr( $option['id'] ); ?>"<?php selected( $class, (string) $option['id'] ); ?>>
+										<?php
+										/* translators: 1: class name, 2: number of tests. */
+										echo esc_html( sprintf( __( '%1$s (%2$d)', 'tbt-test-maker' ), $option['title'], $option['count'] ) );
+										?>
+									</option>
+								<?php endforeach; ?>
+								<?php if ( $all['unclassed'] > 0 ) : ?>
+									<option value="none"<?php selected( $class, 'none' ); ?>>
+										<?php
+										/* translators: %d: number of tests. */
+										echo esc_html( sprintf( __( 'Not in a class (%d)', 'tbt-test-maker' ), $all['unclassed'] ) );
+										?>
+									</option>
+								<?php endif; ?>
+							</select>
+						<?php endif; ?>
 					</div>
 					<span class="tbttm-libbar__line tbttm-libbar__line--end" aria-hidden="true"></span>
 				<?php endif; ?>
@@ -210,7 +254,22 @@ class TBTTM_Teacher {
 				<?php endif; ?>
 			</div>
 
-			<p class="tbttm-libbar__summary" data-tbttm-summary aria-live="polite" hidden></p>
+			<p class="tbttm-libbar__summary" data-tbttm-summary aria-live="polite"<?php echo '' === $class ? ' hidden' : ''; ?>>
+				<?php if ( '' !== $class ) : ?>
+					<?php
+					echo esc_html(
+						sprintf(
+							/* translators: 1: tests shown, 2: all tests, as "12 tests". */
+							__( '%1$d of %2$s', 'tbt-test-maker' ),
+							count( $tests ),
+							/* translators: %d: number of tests. */
+							sprintf( _n( '%d test', '%d tests', $total, 'tbt-test-maker' ), $total )
+						)
+					);
+					?>
+					&middot; <button type="button" class="tbttm-linkbtn" data-tbttm-clear><?php esc_html_e( 'Clear filters', 'tbt-test-maker' ); ?></button>
+				<?php endif; ?>
+			</p>
 			<p class="tbttm-note tbttm-library__notice" data-tbttm-notice role="status" aria-live="polite" hidden></p>
 
 			<?php if ( $empty ) : ?>
@@ -219,8 +278,8 @@ class TBTTM_Teacher {
 
 			<div class="tbttm-list" data-tbttm-grid>
 				<?php
-				foreach ( $rows as $row ) {
-					$this->render_row( TBTTM_Rest::test_summary( $row ) );
+				foreach ( $tests as $test ) {
+					$this->render_row( $test );
 				}
 				?>
 			</div>
@@ -244,7 +303,7 @@ class TBTTM_Teacher {
 		$published = TBTTM_DB::STATUS_PUBLISHED === $t['status'];
 		?>
 		<article class="tbttm-test-row" data-tbttm-card data-id="<?php echo esc_attr( $t['id'] ); ?>" data-attempts="<?php echo esc_attr( $t['attempts'] ); ?>"
-			data-title="<?php echo esc_attr( $t['title'] ); ?>" data-slug="<?php echo esc_attr( $t['slug'] ); ?>" data-url="<?php echo esc_attr( $t['url'] ); ?>" data-status="<?php echo esc_attr( $t['status'] ); ?>">
+			data-title="<?php echo esc_attr( $t['title'] ); ?>" data-slug="<?php echo esc_attr( $t['slug'] ); ?>" data-url="<?php echo esc_attr( $t['url'] ); ?>" data-status="<?php echo esc_attr( $t['status'] ); ?>" data-access="<?php echo esc_attr( $t['access'] ); ?>">
 			<div class="tbttm-test-row__main">
 				<h3 class="tbttm-test-row__title"><?php echo esc_html( $t['title'] ); ?></h3>
 				<p class="tbttm-test-row__meta">
@@ -257,6 +316,18 @@ class TBTTM_Teacher {
 						echo esc_html( sprintf( _n( '%d question', '%d questions', $t['questions'], 'tbt-test-maker' ), $t['questions'] ) );
 						?>
 					</span>
+					<?php if ( TBTTM_Classes::available() ) : ?>
+						<span><?php echo '' !== $t['class_title'] ? esc_html( $t['class_title'] ) : esc_html__( 'Not in a class', 'tbt-test-maker' ); ?></span>
+					<?php endif; ?>
+					<span><?php echo 'open' === $t['access'] ? esc_html__( 'Anyone with the link', 'tbt-test-maker' ) : esc_html__( 'Logged-in students', 'tbt-test-maker' ); ?></span>
+					<?php if ( null !== $t['pass_mark'] ) : ?>
+						<span>
+							<?php
+							/* translators: %d: the pass mark, a percentage. */
+							echo esc_html( sprintf( __( 'Pass mark %d%%', 'tbt-test-maker' ), $t['pass_mark'] ) );
+							?>
+						</span>
+					<?php endif; ?>
 					<?php if ( $published ) : ?>
 						<span>
 							<?php

@@ -60,11 +60,29 @@ class TBTTM_Player {
 			'TBTTM_PLAYER',
 			array(
 				'rest'    => esc_url_raw( rest_url( TBTTM_Rest::NS . '/' ) ),
-				'nonce'   => wp_create_nonce( 'wp_rest' ),
+				// Guests never get a nonce: a guest attempt is owned by its token.
+				'nonce'   => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 				'ajax'    => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
 				'userId'  => get_current_user_id(),
 				'bulls'   => TBTTM_Settings::bulls(),
-			)
+			) + self::activity_config()
+		);
+	}
+
+	/**
+	 * Where completion and presence go: TBT Notes' Class Progress, when Notes
+	 * is active and the viewer is logged in. Empty otherwise, and the player
+	 * then reports nothing.
+	 *
+	 * @return array
+	 */
+	private static function activity_config() {
+		if ( ! is_user_logged_in() || ! class_exists( 'TBT_Notes_Activity_REST' ) || ! defined( 'TBT_NOTES_REST_NAMESPACE' ) ) {
+			return array();
+		}
+		return array(
+			'activityBase'  => esc_url_raw( rest_url( TBT_NOTES_REST_NAMESPACE . '/activity' ) ),
+			'activityNonce' => wp_create_nonce( 'wp_rest' ),
 		);
 	}
 
@@ -105,7 +123,24 @@ class TBTTM_Player {
 			);
 		}
 
-		if ( ! is_user_logged_in() ) {
+		// The access check, in this order: an unknown test, a draft (its owner
+		// only), a test for logged-in students, then the test itself. A test
+		// in a class is not limited to that class's students: the class
+		// decides where the test appears in TBT Notes, not who may open it.
+		$user_id  = get_current_user_id();
+		$test     = TBTTM_DB::get_test_by_slug( $slug );
+		$is_owner = $test && $user_id > 0 && (int) $test->owner_id === $user_id;
+		if ( ! $test || ( TBTTM_DB::STATUS_PUBLISHED !== $test->status && ! $is_owner ) ) {
+			return $this->wrap(
+				TBTTM_Assets::message_card(
+					__( 'This test is not available.', 'tbt-test-maker' ),
+					__( 'The link may be old, or your teacher hasn\'t published the test yet.', 'tbt-test-maker' )
+				)
+			);
+		}
+
+		$is_guest = $user_id <= 0;
+		if ( $is_guest && 'open' !== $test->access ) {
 			return $this->wrap(
 				TBTTM_Assets::message_card(
 					__( 'Log in to take this test', 'tbt-test-maker' ),
@@ -116,25 +151,14 @@ class TBTTM_Player {
 			);
 		}
 
-		$user_id  = get_current_user_id();
-		$test     = TBTTM_DB::get_test_by_slug( $slug );
-		$is_owner = $test && (int) $test->owner_id === $user_id;
-		if ( ! $test || ( TBTTM_DB::STATUS_PUBLISHED !== $test->status && ! $is_owner ) ) {
-			return $this->wrap(
-				TBTTM_Assets::message_card(
-					__( 'This test is not available.', 'tbt-test-maker' ),
-					__( 'The link may be old, or your teacher hasn\'t published the test yet.', 'tbt-test-maker' )
-				)
-			);
-		}
-
 		$questions = TBTTM_DB::get_questions( (int) $test->id );
 		$is_draft  = TBTTM_DB::STATUS_PUBLISHED !== $test->status;
 
 		// Where the student stands: an attempt in progress, a finished one.
+		// A guest's standing lives in their own browser, with the token.
 		$resume      = null;
 		$last_result = '';
-		if ( ! $is_draft ) {
+		if ( ! $is_draft && ! $is_guest ) {
 			$open = TBTTM_DB::get_user_attempt( (int) $test->id, $user_id, TBTTM_DB::ATTEMPT_IN_PROGRESS );
 			if ( $open ) {
 				$ids    = array_column( $questions, 'id' );
@@ -169,7 +193,18 @@ class TBTTM_Player {
 			'count'      => count( $questions ),
 			'resume'     => $resume,
 			'lastResult' => $last_result,
+			'guest'      => $is_guest,
 		);
+
+		// Only a logged-in student on a published test reports to Class
+		// Progress. The owner trying their own test must not show up there,
+		// and a guest has no class to show up in.
+		if ( ! $is_guest && ! $is_owner && ! $is_draft ) {
+			$data['activity'] = array(
+				'objectRef'   => (string) $test->id,
+				'objectTitle' => (string) $test->title,
+			);
+		}
 
 		// No Tool Hero on the student page: the Divi page carries the TBT
 		// header. The test names itself with its title and introduction.

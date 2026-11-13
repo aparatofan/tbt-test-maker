@@ -165,6 +165,60 @@
 	padding-top: 8px;
 }
 
+/* A guest's name, asked above the START button on an open test. */
+.tbttm .tbttm-name {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 420px;
+}
+
+.tbttm .tbttm-name__label {
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.tbttm .tbttm-name__input {
+	display: block;
+	width: 100%;
+	height: 48px;
+	margin: 0;
+	padding: 0 16px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	background: var(--tbt-input);
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-ui);
+	font-size: 16px;
+	line-height: 1.5;
+	box-shadow: none;
+}
+
+.tbttm .tbttm-name__input:focus {
+	border-color: var(--tbt-blue);
+	background: var(--tbt-surface);
+	box-shadow: var(--tbt-focus-ring);
+	outline: none;
+}
+
+.tbttm .tbttm-name__hint {
+	color: var(--tbt-muted);
+	font-size: 15px;
+	line-height: 1.5;
+}
+
+.tbttm .tbttm-name.is-bad .tbttm-name__input {
+	border-color: var(--tbt-error);
+	background: var(--tbt-error-bg);
+}
+
+.tbttm .tbttm-name.is-bad .tbttm-name__hint {
+	color: var(--tbt-error);
+	font-weight: 600;
+}
+
 .tbttm .tbttm-row {
 	display: flex;
 	flex-wrap: wrap;
@@ -562,6 +616,17 @@
 .tbttm .tbttm-pill--fail {
 	background: var(--tbt-error-bg);
 	color: var(--tbt-error);
+}
+
+/* Whose result it is, above the score. */
+.tbttm .tbttm-result__name {
+	margin: 12px 0 0;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
 }
 
 .tbttm .tbttm-score {
