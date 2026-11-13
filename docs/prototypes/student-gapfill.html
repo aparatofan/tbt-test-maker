@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>TBT Test Maker · gap-fill prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Slab:wght@400;600;700&family=Roboto+Mono:wght@700&display=swap">
+<style>
+/* Layout: Tool Hero, then one white stage card on the pale canvas holding the whole sitting. Light only, like every TBT page. */
+:root{
+  --tbt-blue:#0856C9; --tbt-blue-dark:#063F94;
+  --tbt-canvas:#F6F8FC; --tbt-surface:#FFFFFF; --tbt-input:#F0F5FE; --tbt-selected-bg:#EDF4FF;
+  --tbt-border:#D8E3F0; --tbt-blue-wash:#E3EEFD; --tbt-faint:#8299B8; --tbt-periwinkle:#7BA7E8; --tbt-ink:#1F2937; --tbt-muted:#667085;
+  --tbt-success:#16803C; --tbt-success-bg:#ECFDF3; --tbt-error:#C62828; --tbt-error-bg:#FFF1F1;
+  --tbt-white:#FFFFFF; --tbt-hero-soft:rgba(255,255,255,.82);
+  --tbt-shadow:0 6px 20px rgba(24,56,96,.07);
+  --tbt-focus-ring:0 0 0 3px rgba(8,86,201,.18);
+  --ui:"Roboto",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --content:"Roboto Slab",Georgia,serif;
+  --identity:"Roboto Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--tbt-canvas);color:var(--tbt-ink);font:400 16px/1.5 var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:none;box-shadow:var(--tbt-focus-ring)}
+
+/* prototype strip */
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);
+  border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface)}
+.proto b{color:var(--tbt-ink);font-weight:600}
+.proto label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.proto .spacer{flex:1}
+.linkbtn{background:none;border:0;padding:4px;color:var(--tbt-blue);font-weight:600;font-size:14px;border-radius:6px}
+.linkbtn:hover{text-decoration:underline}
+
+/* tool hero */
+.hero{background:linear-gradient(135deg,var(--tbt-blue),var(--tbt-blue-dark));color:var(--tbt-white);border-radius:22px;padding:32px 40px}
+.hero .eyebrow{font:700 12px/1.2 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--tbt-hero-soft);margin:0 0 6px}
+.hero h1{font:700 34px/1.15 var(--identity);letter-spacing:.02em;text-transform:uppercase;margin:0;text-wrap:balance}
+.hero .support{margin:8px 0 0;color:var(--tbt-hero-soft)}
+
+/* stage card */
+.stage{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:22px;box-shadow:var(--tbt-shadow);padding:40px;display:flex;flex-direction:column;gap:32px}
+h2{font:700 22px/1.3 var(--content);margin:0}
+.muted{color:var(--tbt-muted)}
+.facts{display:flex;flex-wrap:wrap;gap:8px 32px;margin:0;padding:0;list-style:none;color:var(--tbt-muted)}
+.facts strong{color:var(--tbt-ink);font-weight:600}
+.field{display:flex;flex-direction:column;gap:8px;max-width:360px}
+.field label{font-weight:600}
+.field input{height:44px;border:1px solid var(--tbt-border);border-radius:12px;background:var(--tbt-input);padding:0 16px;font:400 16px var(--ui);color:var(--tbt-ink)}
+.field input:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.field .hint{font-size:14px;color:var(--tbt-muted)}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:16px}
+.row .spacer{flex:1}
+
+/* buttons */
+.btn{height:44px;padding:0 24px;border-radius:12px;font-weight:600;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-blue-dark);transition:transform .15s,background .15s}
+.btn:hover{background:var(--tbt-selected-bg)}
+.btn.primary{background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white)}
+.btn.primary:hover{background:var(--tbt-blue-dark);transform:translateY(-1px)}
+.btn.cta{height:53px;min-width:250px;border-radius:999px;background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white);text-transform:uppercase;letter-spacing:.08em}
+.btn.cta:hover{background:var(--tbt-blue-dark)}
+.btn:disabled{opacity:.5;cursor:default;transform:none}
+
+/* question */
+.strip{display:block;width:100%;border-radius:12px}
+.ph{border:1px dashed var(--tbt-border);border-radius:12px;padding:32px 16px;text-align:center;color:var(--tbt-muted);font-size:14px}
+.prog{display:flex;flex-direction:column;gap:8px}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:13px;color:var(--tbt-faint)}
+.meta strong{color:var(--tbt-ink);font-weight:600}
+.meta .spacer{flex:1}
+.saved{display:inline-flex;align-items:center;gap:6px;color:var(--tbt-faint);font-weight:400}
+.saved.off{color:var(--tbt-error);font-weight:600}
+.qnum{font:700 28px/1 var(--content);border-left:6px solid var(--tbt-blue);padding:4px 0 4px 16px;margin:0}
+.qbody{font:400 20px/1.6 var(--content);display:flex;flex-direction:column;gap:4px}
+.qbody p{margin:0}
+.qbody .ask{margin-top:16px}
+.opts{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0}
+.opt{display:flex;align-items:center;gap:16px;padding:12px 16px;border:1px solid var(--tbt-border);border-radius:12px;cursor:pointer;font:400 18px/1.4 var(--content);background:var(--tbt-surface)}
+.opt:hover{background:var(--tbt-selected-bg)}
+.opt input{appearance:none;width:20px;height:20px;flex:none;border:2px solid var(--tbt-muted);border-radius:50%;margin:0;display:grid;place-content:center}
+.opt input:checked{border-color:var(--tbt-blue)}
+.opt input:checked::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--tbt-blue)}
+.opt:has(input:checked){border-color:var(--tbt-blue);background:var(--tbt-selected-bg)}
+.opt:has(input:focus-visible){box-shadow:var(--tbt-focus-ring)}
+.opts.locked .opt{cursor:default}
+.opts.locked .opt:hover{background:var(--tbt-surface)}
+.opts.locked .opt.right,.opts.locked .opt.right:hover{border-color:var(--tbt-success);background:var(--tbt-success-bg)}
+.opts.locked .opt.wrong,.opts.locked .opt.wrong:hover{border-color:var(--tbt-error);background:var(--tbt-error-bg)}
+.opt .tag{margin-left:auto;font:600 14px var(--ui)}
+.opt.right .tag{color:var(--tbt-success)}
+.opt.wrong .tag{color:var(--tbt-error)}
+.tiles{display:flex;align-items:center;gap:8px}
+.dots{flex:1;min-width:0;display:grid;gap:8px}
+.pg{flex:none;width:32px;height:40px;border:0;background:none;color:var(--tbt-blue);font-size:22px;line-height:1;border-radius:10px;padding:0}
+.pg:hover{background:var(--tbt-selected-bg)}
+.pg:disabled{opacity:.3;cursor:default;background:none}
+.dot.gap{visibility:hidden}
+.dot{height:40px;min-width:0;border-radius:10px;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-muted);font-weight:600;font-size:14px;padding:0;
+  font-variant-numeric:tabular-nums;transition:background .2s,color .2s,border-color .2s,transform .2s}
+.dot:hover{border-color:var(--tbt-blue);color:var(--tbt-blue);transform:translateY(-2px)}
+.dot.done{background:var(--tbt-blue-wash);color:var(--tbt-blue-dark);border-color:var(--tbt-periwinkle)}
+.dot.done:hover{color:var(--tbt-blue-dark);border-color:var(--tbt-blue)}
+.dot.good{background:var(--tbt-success-bg);color:var(--tbt-success);border-color:var(--tbt-success)}
+.dot.bad{background:var(--tbt-error-bg);color:var(--tbt-error);border-color:var(--tbt-error)}
+.dot.good:hover{color:var(--tbt-success)}
+.dot.bad:hover{color:var(--tbt-error)}
+.dot.here{box-shadow:0 0 0 2px var(--tbt-surface),0 0 0 4px var(--tbt-blue)}
+.dot.pop{animation:tilepop .45s cubic-bezier(.22,.61,.36,1)}
+@keyframes tilepop{0%{transform:scale(.8)}55%{transform:scale(1.12) translateY(-3px)}100%{transform:scale(1)}}
+.pill{display:inline-block;border-radius:999px;padding:4px 12px;font:600 14px var(--ui)}
+.pill.pass{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.pill.fail{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.proto select{font:inherit;color:var(--tbt-ink);border:1px solid var(--tbt-border);border-radius:8px;padding:4px 8px;background:var(--tbt-surface)}
+
+/* notices */
+.notice{border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.notice.warn{background:var(--tbt-selected-bg);border:1px solid var(--tbt-border)}
+.notice.err{background:var(--tbt-error-bg);border:1px solid var(--tbt-error);color:var(--tbt-error)}
+.notice p{margin:0;flex:1;min-width:220px}
+.notice.ok{background:var(--tbt-success-bg);border:1px solid var(--tbt-success);color:var(--tbt-success)}
+.notice.err .btn{color:var(--tbt-error);border-color:var(--tbt-error)}
+
+/* result */
+.score{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 24px}
+.score .big{font:700 64px/1 var(--content);color:var(--tbt-blue);font-variant-numeric:tabular-nums}
+.score .pct{font:600 22px var(--content);color:var(--tbt-muted)}
+.review{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.review li{display:grid;grid-template-columns:32px 1fr;gap:4px 12px;padding:16px 0;border-top:1px solid var(--tbt-border)}
+.review .mark{width:28px;height:28px;border-radius:50%;display:grid;place-content:center;font-weight:700;font-size:15px}
+.review .ok .mark{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.review .bad .mark{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.review .q{font:600 17px/1.4 var(--content);min-width:0}
+.review .a{grid-column:2;font-size:15px;color:var(--tbt-muted);min-width:0}
+.review .a b{font-weight:600}
+.review .ok .a b{color:var(--tbt-success)}
+.review .bad .a b.yours{color:var(--tbt-error)}
+.review .bad .a b.right{color:var(--tbt-success)}
+
+@media (max-width:640px){
+  .hero{padding:24px}.hero h1{font-size:24px}
+  .stage{padding:24px;gap:24px}
+  .qbody{font-size:18px}.opt{font-size:16px}
+  .btn.cta{min-width:0;width:100%}
+  .tiles{gap:4px}.dots{gap:4px}.pg{width:24px}.dot{font-size:13px;border-radius:8px}
+}
+@media (prefers-reduced-motion:reduce){.btn,.dot{transition:none}.dot.pop{animation:none}.dot:hover{transform:none}}
+
+/* gap-fill */
+.gapin{display:inline-block;width:9ch;min-width:9ch;max-width:100%;height:1.9em;margin:0 2px;padding:0 10px;vertical-align:baseline;
+  border:1px solid var(--tbt-border);border-bottom:2px solid var(--tbt-blue);border-radius:8px;background:var(--tbt-input);
+  font:600 1em/1 var(--content);color:var(--tbt-blue-dark);text-align:center}
+.gapin:focus{outline:none;background:var(--tbt-surface);border-color:var(--tbt-blue);box-shadow:var(--tbt-focus-ring)}
+.gapin:disabled{opacity:1;-webkit-text-fill-color:currentColor}
+.gapin.right{border-color:var(--tbt-success);background:var(--tbt-success-bg);color:var(--tbt-success)}
+.gapin.wrong{border-color:var(--tbt-error);background:var(--tbt-error-bg);color:var(--tbt-error)}
+.qbody.gaps p{line-height:2.3}
+.review .a .line{color:var(--tbt-ink);line-height:1.9}
+.review .a s{color:var(--tbt-error);font-weight:600}
+.review .a .line b.right{color:var(--tbt-success)}
+</style>
+
+<div class="wrap">
+  <div class="proto">
+    <span><b>Prototype</b> · gap-fill questions, what the student sees</span>
+    <span class="spacer"></span>
+    <label for="set">Example <select id="set"><option value="sent">Sentences</option><option value="para">One paragraph</option></select></label>
+    <label for="mode">Feedback <select id="mode"><option value="end">At the end</option><option value="now">After each question</option></select></label>
+    <button class="linkbtn" id="reset" type="button">Start over</button>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">The Blue Tree · Test</p>
+    <h1>Expressing Opinions</h1>
+    <p class="support">Check how well you understand the phrases people use to agree, disagree and give an opinion.</p>
+  </header>
+
+  <main class="stage" id="stage"></main>
+</div>
+
+<script>
+// A gap is written in square brackets; | separates answers that are all accepted. Every gap is one point.
+const SETS = {
+  sent: [
+    {lines:[["Alita","Working from home is the future."],["Pete","I couldn’t agree [more]."]], ask:"Uzupełnij odpowiedź Pete’a jednym słowem."},
+    {lines:[["","As [far] as I’m [concerned], the film was far too long."]], ask:"Uzupełnij zwrot, który wprowadza opinię."},
+    {lines:[["Pete","Pineapple on pizza is a crime."],["Alita","Really? I [don’t|do not] think so."]], ask:"Alita się nie zgadza. Uzupełnij jej odpowiedź."},
+    {lines:[["","If you [ask] me, the old logo was better."]], ask:"Uzupełnij zwrot, który znaczy „moim zdaniem”."},
+    {lines:[["Sven","We should cancel the meeting."],["Kat","I’m not so [sure] about that."]], ask:"Kat ma wątpliwości. Uzupełnij jej odpowiedź."}
+  ],
+  para: [
+    {lines:[["","Last night Kat and Sven had a long talk about working from home. In Kat’s [opinion], the office is a thing of the past. Sven did not agree [with] her. “I see your [point],” he said, “but people need to meet face to [face].” Kat was not so [sure] about that. “If you [ask] me,” she answered, “most meetings could be an email.” In the end they agreed to [disagree|differ]."]],
+     ask:"Uzupełnij tekst. W każdą lukę wpisz jedno słowo."}
+  ]
+};
+Object.values(SETS).forEach(set=>set.forEach(q=>{ q.keys=[];
+  q.rows = q.lines.map(([who,t])=>{ const parts=[]; const re=/\[([^\]]+)\]/g; let last=0, m;
+    while((m=re.exec(t))){ parts.push({t:t.slice(last,m.index)}); parts.push({g:q.keys.length}); q.keys.push(m[1].split("|").map(x=>x.trim())); last=re.lastIndex; }
+    parts.push({t:t.slice(last)}); return {who, parts}; }); }));
+
+const KEY = "tbtq-gap-proto-v2";
+const stage = document.getElementById("stage"), modeEl = document.getElementById("mode"), setEl = document.getElementById("set");
+let QUIZ, N, s = load() || fresh("sent"), justDone = -1;
+use(s.set); modeEl.value = s.mode; setEl.value = s.set;
+
+function use(name){ QUIZ = SETS[name]; N = QUIZ.length; }
+function fresh(name){ use(name); return {set:name, view:"quiz", i:0, answers:QUIZ.map(q=>q.keys.map(()=>"")), locked:Array(N).fill(false), warn:false, mode:"end"}; }
+function load(){ try{ const v = JSON.parse(localStorage.getItem(KEY)); return v && SETS[v.set] && v.answers.length===SETS[v.set].length ? v : null; }catch(e){ return null; } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(s)); }catch(e){} }
+function esc(t){ return String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+// Marking ignores capitals, extra spaces and the kind of apostrophe.
+function norm(t){ return String(t).toLowerCase().replace(/[’‘`´]/g,"'").replace(/\s+/g," ").trim(); }
+function gapRight(i,g){ return QUIZ[i].keys[g].map(norm).includes(norm(s.answers[i][g])); }
+function isDone(i){ return s.answers[i].every(x=>x.trim()!==""); }
+function rightIn(i){ return QUIZ[i].keys.filter((_,g)=>gapRight(i,g)).length; }
+const answered = () => QUIZ.filter((_,i)=>isDone(i)).length;
+const gapsFilled = () => s.answers.flat().filter(x=>x.trim()!=="").length;
+const POINTS = () => QUIZ.reduce((n,q)=>n+q.keys.length,0);
+const score = () => QUIZ.reduce((n,_,i)=>n+rightIn(i),0);
+function metaText(){ return N===1 ? `${gapsFilled()} of ${POINTS()} gaps filled` : `Question ${s.i+1} of ${N} · ${N-answered()} left`; }
+
+function render(){ save(); stage.innerHTML = s.view==="quiz" ? question() : result(); }
+
+function question(){
+  const q = QUIZ[s.i], last = s.i===N-1, a = s.answers[s.i], now = s.mode==="now", lock = now && s.locked[s.i];
+  const pop = justDone; justDone = -1;
+  const missing = QUIZ.map((_,i)=>isDone(i)?0:i+1).filter(Boolean);
+  const empty = POINTS()-gapsFilled();
+  const nextBtn = last ? `<button class="btn cta" type="button" data-act="finish">Finish test</button>`
+                       : `<button class="btn primary" type="button" data-act="next">Next question</button>`;
+  const body = q.rows.map(r=>`<p>${r.who?`<strong>${esc(r.who)}:</strong> `:""}${r.parts.map(p=> p.t!==undefined ? esc(p.t)
+      : `<input class="gapin ${lock?(gapRight(s.i,p.g)?"right":"wrong"):""}" type="text" data-g="${p.g}" value="${esc(a[p.g])}" style="width:${Math.max(9,a[p.g].length+3)}ch" ${lock?"disabled":""}
+           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Gap ${p.g+1} of ${q.keys.length}">`).join("")}</p>`).join("");
+  const r = rightIn(s.i), g = q.keys.length;
+  const wrong = q.keys.map((k,x)=>gapRight(s.i,x)?"":`<strong>${esc(k[0])}</strong>`).filter(Boolean);
+  const note = !lock ? "" : r===g ? `<div class="notice ok" role="status"><p><strong>Correct.</strong>${g>1?` ${g} of ${g} points.`:""}</p></div>`
+    : `<div class="notice err" role="status"><p><strong>${g>1?`${r} of ${g} points.`:"Not quite."}</strong> Correct: ${wrong.join(", ")}</p></div>`;
+  return `
+    <div class="prog">
+      ${N>1 ? `<div class="tiles"><div class="dots" style="grid-template-columns:repeat(${N},minmax(0,1fr))">
+        ${QUIZ.map((qq,i)=>{ const c = now && s.locked[i] ? (rightIn(i)===qq.keys.length?"good":"bad") : (isDone(i)?"done":"");
+          return `<button type="button" class="dot ${c} ${i===s.i?"here":""} ${i===pop?"pop":""}" data-go="${i}" aria-label="Question ${i+1}">${i+1}</button>`; }).join("")}
+      </div></div>` : ""}
+      <div class="meta"><span id="meta">${metaText()}</span><span class="spacer"></span><span class="saved">✓ Saved</span></div>
+    </div>
+    ${N>1 ? `<p class="qnum">${s.i+1}.</p>` : ""}
+    <div class="qbody gaps">${N===1?`<p class="muted" style="font:400 16px/1.5 var(--ui);margin-bottom:8px">${q.ask}</p>`:""}${body}${N>1?`<p class="ask" style="line-height:1.6">${q.ask}</p>`:""}</div>
+    ${note}
+    ${s.warn && empty ? (N===1 ? `<div class="notice warn"><p><strong>${empty}</strong> ${empty===1?"gap is":"gaps are"} still empty.</p>
+       <button class="btn" type="button" data-act="force">Finish anyway</button></div>`
+     : `<div class="notice warn"><p>${missing.length===1?"Question":"Questions"} <strong>${missing.join(", ")}</strong> ${missing.length===1?"has":"have"} no answer yet.</p>
+       <button class="btn" type="button" data-go="${missing[0]-1}">Go to question ${missing[0]}</button>
+       <button class="btn" type="button" data-act="force">Finish anyway</button></div>`) : ""}
+    <div class="row">
+      ${N>1 ? `<button class="btn" type="button" data-act="back" ${s.i===0?"disabled":""}>Back</button>` : ""}
+      <span class="spacer"></span>
+      ${now && !lock ? `<button class="btn primary" type="button" data-act="check" id="check" ${isDone(s.i)?"":"disabled"}>Check ${g>1?"answers":"answer"}</button>` : nextBtn}
+    </div>`;
+}
+
+// The text with the student's words put back in; a wrong word is crossed out and followed by the right one.
+function filled(i){
+  const q = QUIZ[i];
+  return q.rows.map(r=>(r.who?esc(r.who)+": ":"") + r.parts.map(p=>{ if(p.t!==undefined) return esc(p.t);
+    const v = s.answers[i][p.g].trim(), key = `<b class="right">${esc(q.keys[p.g][0])}</b>`;
+    return gapRight(i,p.g) ? `<b class="right">${esc(v)}</b>` : `<s>${v?esc(v):"(empty)"}</s> ${key}`; }).join("")).join(" ");
+}
+
+function result(){
+  const sc = score(), T = POINTS(), pct = Math.round(sc/T*100);
+  return `
+    <div>
+      <h2>Here is your result</h2>
+      <div class="score" style="margin-top:16px"><span class="big">${sc} / ${T}</span><span class="pct">${pct}%</span></div>
+    </div>
+    <ul class="review">
+      ${QUIZ.map((q,i)=>{ const r=rightIn(i), g=q.keys.length, ok=r===g;
+        return `<li class="${ok?"ok":"bad"}"><span class="mark" aria-hidden="true">${ok?"✓":"✗"}</span>
+          <span class="q">${N>1?(i+1)+". ":""}${q.ask}${g>1?` <span class="muted" style="font:400 14px var(--ui)">· ${r} of ${g} points</span>`:""}</span>
+          <span class="a"><span class="line">${filled(i)}</span></span></li>`; }).join("")}
+    </ul>
+    <div class="row"><button class="btn cta" type="button" data-act="restart">Try again</button></div>`;
+}
+
+function go(i){ s.i = Math.max(0, Math.min(N-1, i)); }
+function finish(force){ if(!force && gapsFilled()<POINTS()){ s.warn=true; return render(); } s.warn=false; s.view="result"; render(); window.scrollTo({top:0}); }
+function restart(){ s = Object.assign(fresh(setEl.value), {mode:modeEl.value}); render(); }
+function focusGap(){ const g = stage.querySelector(".gapin:not(:disabled)"); if(g) g.focus({preventScroll:true}); }
+function advance(){ if(s.mode==="now" && !s.locked[s.i]){ if(isDone(s.i)){ s.locked[s.i]=true; justDone=s.i; render(); } return; }
+  if(s.i===N-1) return finish(false); go(s.i+1); render(); focusGap(); }
+
+// Typing never redraws the question, so the cursor stays where it is.
+stage.addEventListener("input", e=>{
+  if(!e.target.classList.contains("gapin")) return;
+  const was = isDone(s.i);
+  s.answers[s.i][+e.target.dataset.g] = e.target.value; save();
+  e.target.style.width = Math.max(9, e.target.value.length+3) + "ch";
+  const done = isDone(s.i), tile = stage.querySelector('.dot[data-go="'+s.i+'"]');
+  if(s.mode==="end" && tile){ tile.classList.toggle("done", done); if(done && !was) tile.classList.add("pop"); }
+  const c = document.getElementById("check"); if(c) c.disabled = !done;
+  const m = document.getElementById("meta"); if(m) m.textContent = metaText();
+});
+stage.addEventListener("keydown", e=>{
+  if(e.key!=="Enter" || !e.target.classList.contains("gapin")) return;
+  e.preventDefault();
+  const all=[...stage.querySelectorAll(".gapin")], k=all.indexOf(e.target);
+  if(k<all.length-1) all[k+1].focus(); else advance();
+});
+stage.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.go!==undefined){ go(+b.dataset.go); s.warn=false; render(); return focusGap(); }
+  switch(b.dataset.act){
+    case "restart": return restart();
+    case "check": return advance();
+    case "next": go(s.i+1); render(); return focusGap();
+    case "back": go(s.i-1); render(); return focusGap();
+    case "finish": return finish(false);
+    case "force": return finish(true);
+  }
+});
+modeEl.addEventListener("change", ()=>{ s.mode=modeEl.value; s.locked = QUIZ.map((_,i)=>s.mode==="now" && isDone(i)); render(); });
+setEl.addEventListener("change", restart);
+document.getElementById("reset").addEventListener("click", ()=>{ modeEl.value="end"; setEl.value="sent"; s=fresh("sent"); render(); });
+render();
+</script>

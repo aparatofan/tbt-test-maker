@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>TBT Test Maker · gap-fill builder prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Slab:wght@400;600;700&family=Roboto+Mono:wght@700&display=swap">
+<style>
+/* Layout: Tool Hero, Admin Bar, then an object-card grid (library) or three stage cards (builder). Light only, like every TBT page. */
+:root{
+  --tbt-blue:#0856C9; --tbt-blue-dark:#063F94;
+  --tbt-canvas:#F6F8FC; --tbt-surface:#FFFFFF; --tbt-input:#F0F5FE; --tbt-selected-bg:#EDF4FF;
+  --tbt-border:#D8E3F0; --tbt-ink:#1F2937; --tbt-muted:#667085; --tbt-faint:#8299B8;
+  --tbt-success:#16803C; --tbt-success-bg:#ECFDF3; --tbt-error:#C62828; --tbt-error-bg:#FFF1F1;
+  --tbt-white:#FFFFFF; --tbt-hero-soft:rgba(255,255,255,.82);
+  --tbt-shadow:0 6px 20px rgba(24,56,96,.07); --tbt-shadow-raised:0 10px 28px rgba(8,86,201,.12);
+  --tbt-focus-ring:0 0 0 3px rgba(8,86,201,.18);
+  --ui:"Roboto",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  --content:"Roboto Slab",Georgia,serif;
+  --identity:"Roboto Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--tbt-canvas);color:var(--tbt-ink);font:400 16px/1.5 var(--ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 64px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:none;box-shadow:var(--tbt-focus-ring)}
+h2,h3,p{margin:0}
+
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);
+  border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface)}
+.proto b{color:var(--tbt-ink);font-weight:600}
+.spacer{flex:1}
+.linkbtn{background:none;border:0;padding:4px;color:var(--tbt-blue);font-weight:600;font-size:14px;border-radius:6px}
+.linkbtn:hover{text-decoration:underline}
+
+.hero{background:linear-gradient(135deg,var(--tbt-blue),var(--tbt-blue-dark));color:var(--tbt-white);border-radius:22px;padding:32px 40px}
+.hero .eyebrow{font:700 12px/1.2 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--tbt-hero-soft);margin:0 0 6px}
+.hero h1{font:700 34px/1.15 var(--identity);letter-spacing:.02em;text-transform:uppercase;margin:0}
+.hero .support{margin:8px 0 0;color:var(--tbt-hero-soft)}
+
+/* Admin Bar */
+.abar{display:flex;align-items:center;gap:10px;margin-top:24px}
+.abar .title{min-width:234px;font:700 28px/1.2 var(--content);color:var(--tbt-blue);letter-spacing:-.01em;margin:0}
+.abar .line{flex:1;height:1px;background:var(--tbt-border)}
+.abar .search{position:relative;width:300px;flex:none}
+.abar .search input{width:100%;height:44px;border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:0 40px;font:400 16px var(--ui);color:var(--tbt-ink)}
+.abar .search input:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.abar .search svg{position:absolute;left:14px;top:13px;color:var(--tbt-muted)}
+.abar .search .x{position:absolute;right:6px;top:6px;width:32px;height:32px;border:0;background:none;color:var(--tbt-muted);font-size:18px;border-radius:8px}
+.pillcta{flex:none;width:250px;height:53px;border-radius:999px;border:0;background:var(--tbt-blue);color:var(--tbt-white);font:600 16px var(--ui);text-transform:uppercase;letter-spacing:.08em}
+.pillcta:hover{background:var(--tbt-blue-dark)}
+.summary{font-size:14px;color:var(--tbt-muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* library */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px}
+.card{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--tbt-shadow);transition:box-shadow .2s}
+.card:hover{box-shadow:var(--tbt-shadow-raised)}
+.card h3{font:700 18px/1.35 var(--content);text-wrap:balance}
+.card .meta{font-size:14px;color:var(--tbt-muted);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.status{border-radius:999px;padding:2px 10px;font:600 12px var(--ui)}
+.status.pub{background:var(--tbt-success-bg);color:var(--tbt-success)}
+.status.draft{background:var(--tbt-input);color:var(--tbt-muted)}
+.card .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
+.empty{color:var(--tbt-muted);padding:32px 0}
+
+/* buttons */
+.btn{height:44px;padding:0 20px;border-radius:12px;font-weight:600;border:1px solid var(--tbt-border);background:var(--tbt-surface);color:var(--tbt-blue-dark)}
+.btn:hover{background:var(--tbt-selected-bg)}
+.btn.sm{height:36px;padding:0 14px;font-size:14px;border-radius:10px}
+.btn.primary{background:var(--tbt-blue);border-color:var(--tbt-blue);color:var(--tbt-white)}
+.btn.primary:hover{background:var(--tbt-blue-dark)}
+.btn.ghost{border-color:transparent;background:none}
+.btn.ghost:hover{background:var(--tbt-selected-bg)}
+.btn.danger{color:var(--tbt-error);border-color:transparent;background:none}
+.btn.danger:hover{background:var(--tbt-error-bg)}
+.btn:disabled{opacity:.5;cursor:default}
+.icon{width:40px;height:40px;border-radius:10px;border:0;background:none;color:var(--tbt-muted);font-size:18px;padding:0}
+.icon:hover{background:var(--tbt-selected-bg);color:var(--tbt-blue)}
+.icon.del:hover{background:var(--tbt-error-bg);color:var(--tbt-error)}
+.icon:disabled{opacity:.3;cursor:default;background:none}
+
+/* builder */
+.back{align-self:flex-start}
+.stage{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:22px;box-shadow:var(--tbt-shadow);padding:40px;display:flex;flex-direction:column;gap:24px}
+.stage > h2{font:700 22px/1.3 var(--content)}
+.stage > .sub{color:var(--tbt-muted);margin-top:-16px}
+.stages{display:flex;flex-direction:column;gap:40px}
+.field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.field > label,.field > .lab{font-weight:600}
+.field .hint{font-size:14px;color:var(--tbt-muted)}
+input[type=text],input[type=number],textarea{border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:10px 16px;font:400 16px/1.5 var(--ui);color:var(--tbt-ink);width:100%}
+input[type=text],input[type=number]{height:44px;padding-block:0}
+input:focus,textarea:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.slab{font-family:var(--content) !important}
+textarea{resize:vertical;min-height:88px}
+
+.q{border:1px solid var(--tbt-border);border-radius:16px;background:var(--tbt-surface)}
+.q.open{border-color:var(--tbt-blue)}
+.q.bad{border-color:var(--tbt-error)}
+.qhead{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 16px}
+.qhead .n{flex:none;width:36px;height:36px;border-radius:10px;background:var(--tbt-selected-bg);color:var(--tbt-blue-dark);font-weight:600;display:grid;place-content:center;font-variant-numeric:tabular-nums}
+.qhead .sum{flex:1;min-width:0;border:0;background:none;text-align:left;padding:8px;border-radius:8px;font:400 16px/1.4 var(--content);color:var(--tbt-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qhead .sum.blank{color:var(--tbt-faint)}
+.qhead .ok{flex:none;font-size:13px;color:var(--tbt-faint)}
+.qhead .ok.miss{color:var(--tbt-error);font-weight:600}
+.qbody{padding:8px 24px 24px;display:flex;flex-direction:column;gap:24px;border-top:1px solid var(--tbt-border);padding-top:24px}
+.ans{display:flex;flex-direction:column;gap:8px}
+.arow{display:flex;align-items:center;gap:8px}
+.arow .let{flex:none;width:20px;color:var(--tbt-muted);font-family:var(--content)}
+.arow input[type=radio]{appearance:none;flex:none;width:22px;height:22px;border:2px solid var(--tbt-muted);border-radius:50%;margin:0;display:grid;place-content:center;cursor:pointer}
+.arow input[type=radio]:checked{border-color:var(--tbt-success);background:var(--tbt-success)}
+.arow input[type=radio]:checked::before{content:"✓";color:var(--tbt-white);font-size:13px;font-weight:700;line-height:1}
+.arow input[type=radio]:focus-visible{box-shadow:var(--tbt-focus-ring);outline:none}
+.arow.right input[type=text]{background:var(--tbt-success-bg)}
+.rowline{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+
+.seg{display:inline-flex;border:1px solid var(--tbt-border);border-radius:12px;overflow:hidden;align-self:flex-start}
+.seg label{padding:10px 16px;cursor:pointer;font-weight:500;color:var(--tbt-muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--tbt-selected-bg);color:var(--tbt-blue-dark);font-weight:600}
+.seg label:has(input:focus-visible){box-shadow:inset var(--tbt-focus-ring)}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px}
+.pct{display:flex;align-items:center;gap:8px}
+.pct input{width:110px}
+.switch{display:flex;align-items:center;gap:12px;cursor:pointer}
+.switch input{appearance:none;width:44px;height:26px;border-radius:999px;background:var(--tbt-border);position:relative;margin:0;flex:none;transition:background .15s;cursor:pointer}
+.switch input::before{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--tbt-white);transition:transform .15s}
+.switch input:checked{background:var(--tbt-blue)}
+.switch input:checked::before{transform:translateX(18px)}
+.switch input:focus-visible{box-shadow:var(--tbt-focus-ring);outline:none}
+
+select{height:44px;border:1px solid transparent;border-radius:12px;background:var(--tbt-input);padding:0 12px;font:400 16px var(--ui);color:var(--tbt-ink);width:100%}
+select:focus{background:var(--tbt-surface);border-color:var(--tbt-blue);outline:none;box-shadow:var(--tbt-focus-ring)}
+.imp{border:1px solid var(--tbt-border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:24px;background:var(--tbt-canvas)}
+.imp h3{font:700 18px/1.3 var(--content)}
+.tblwrap{overflow-x:auto;border:1px solid var(--tbt-border);border-radius:12px;background:var(--tbt-surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--tbt-border);vertical-align:top;white-space:pre-line}
+th{font-weight:600;color:var(--tbt-muted);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.qc{font-family:var(--content);min-width:220px}
+tr.badrow td{background:var(--tbt-error-bg)}
+td .prob{color:var(--tbt-error);font-weight:600}
+td .fine{color:var(--tbt-success);font-weight:600}
+.imp textarea{font-family:ui-monospace,Consolas,monospace;font-size:14px;min-height:120px;background:var(--tbt-surface);border-color:var(--tbt-border)}
+.feat{display:block;max-width:420px;width:100%;border-radius:12px;border:1px solid var(--tbt-border)}
+/* results */
+.rhead{display:flex;flex-direction:column;gap:8px}
+.rhead h2{font:700 28px/1.25 var(--content);color:var(--tbt-blue);letter-spacing:-.01em;text-wrap:balance}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+.stat{background:var(--tbt-surface);border:1px solid var(--tbt-border);border-radius:16px;padding:16px 24px}
+.stat .v{font:700 28px/1.2 var(--content);font-variant-numeric:tabular-nums}
+.stat .k{font-size:14px;color:var(--tbt-muted)}
+.rtools{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}
+.rtools .search{position:relative;width:300px;max-width:100%}
+.rtools .search input{padding-left:16px}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--tbt-blue);margin:0}
+.rt td,.rt th{white-space:nowrap;vertical-align:middle}
+.rt td.name{font-weight:600;white-space:normal}
+.rt .guest{font-weight:400;color:var(--tbt-faint);font-size:13px;margin-left:6px}
+.rt tr.att{cursor:pointer}
+.rt tr.att:hover td{background:var(--tbt-selected-bg)}
+.rt tr.att.sel td{background:var(--tbt-selected-bg)}
+.rt td.num{font-variant-numeric:tabular-nums}
+.meter{display:inline-block;width:72px;height:6px;border-radius:999px;background:var(--tbt-input);vertical-align:middle;margin-left:10px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--tbt-blue);border-radius:999px}
+.rt td.detail{white-space:normal;background:var(--tbt-canvas);padding:16px 24px}
+.alist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.alist li{display:grid;grid-template-columns:24px 1fr;gap:2px 8px;font-size:14px}
+.alist .m{font-weight:700}
+.alist .okm{color:var(--tbt-success)}.alist .badm{color:var(--tbt-error)}
+.alist .qq{font-family:var(--content);font-size:15px}
+.alist .aa{grid-column:2;color:var(--tbt-muted)}
+.alist .aa b{font-weight:600}
+.alist .aa .y{color:var(--tbt-error)}.alist .aa .r{color:var(--tbt-success)}
+.hard{display:flex;flex-direction:column;gap:12px;list-style:none;margin:0;padding:0}
+.hard li{display:grid;grid-template-columns:64px 1fr;gap:16px;align-items:baseline}
+.hard .p{font:700 18px var(--content);color:var(--tbt-error);font-variant-numeric:tabular-nums}
+.hard .t{font-family:var(--content);min-width:0}
+.hard .t span{display:block;font:400 14px var(--ui);color:var(--tbt-muted)}
+.savebar{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.note{border-radius:12px;padding:12px 16px;font-size:15px}
+.note.err{background:var(--tbt-error-bg);color:var(--tbt-error);border:1px solid var(--tbt-error)}
+.note.ok{background:var(--tbt-success-bg);color:var(--tbt-success);border:1px solid var(--tbt-success)}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;color:var(--tbt-error)}
+
+@media (max-width:1100px){
+  .abar{flex-wrap:wrap}.abar .line{display:none}
+  .abar .title{flex:1;min-width:0}
+  .abar .search{order:3;width:100%}
+}
+@media (max-width:640px){
+  .hero{padding:24px}.hero h1{font-size:24px}
+  .stage{padding:24px}.qbody{padding:16px}
+  .pillcta{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+
+/* gap-fill */
+.prev{border:1px dashed var(--tbt-border);border-radius:12px;padding:16px;background:var(--tbt-canvas);font:400 17px/2.1 var(--content)}
+.prev p{margin:0}
+.gchip{display:inline-block;line-height:1.5;border:1px solid var(--tbt-border);border-bottom:2px solid var(--tbt-blue);border-radius:8px;background:var(--tbt-surface);padding:0 10px;font-weight:600;color:var(--tbt-blue-dark)}
+.gchip i{font-style:normal;font-weight:400;color:var(--tbt-faint)}
+.proto{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;color:var(--tbt-muted);border:1px dashed var(--tbt-border);border-radius:12px;padding:8px 16px;background:var(--tbt-surface)}
+.proto b{color:var(--tbt-ink);font-weight:600}
+</style>
+
+<div class="wrap">
+  <div class="proto"><span><b>Prototype</b> · the Questions part of the builder, with gap-fill</span></div>
+  <div id="app"></div>
+</div>
+
+<script>
+const L = "abcdef", app = document.getElementById("app");
+let nid = 1, openQ = null, imp = null;
+const mk = (type, text, opts, key) => ({id:nid++, type, text, opts:opts||["","",""], key:key??null});
+const qs = [
+  mk("gap", "Alita: Working from home is the future.\nPete: I couldn’t agree [more].\n\nUzupełnij odpowiedź Pete’a jednym słowem."),
+  mk("gap", "As [far] as I’m [concerned], the film was far too long."),
+  mk("gap", "Pete: Pineapple on pizza is a crime.\nAlita: Really? I [don’t|do not] think so.")
+];
+openQ = qs[1].id;
+const SAMPLE = "If you [ask] me, the old logo was better.\nI see your [point], but people need to meet face to [face].\nIn the end they agreed to [disagree|differ].\nKat was not so sure about that.";
+
+function esc(t){ return String(t).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+// Every [answer] is a gap; | separates answers that are all accepted.
+function gaps(text){ return [...text.matchAll(/\[([^\[\]]*)\]/g)].map(m=>m[1].split("|").map(x=>x.trim()).filter(Boolean)); }
+function gapProblem(text){
+  if(!text.trim()) return "No text";
+  const g = gaps(text);
+  if(!g.length) return "No gap yet";
+  if(g.some(a=>!a.length)) return "A gap is empty";
+  if(/[\[\]]/.test(text.replace(/\[[^\[\]]*\]/g,""))) return "A bracket is not closed";
+  return "";
+}
+function problem(q){
+  if(q.type==="gap") return gapProblem(q.text);
+  if(!q.text.trim()) return "No question text";
+  if(q.opts.filter(o=>o.trim()).length<2) return "Needs two answers";
+  if(q.key===null || !q.opts[q.key].trim()) return "No correct answer";
+  return "";
+}
+function preview(text){
+  return text.split("\n").filter(l=>l.trim()).map(l=>{
+    let h = esc(l).replace(/\[([^\[\]]*)\]/g, (_,a)=>{ const alts=a.split("|").map(x=>x.trim()).filter(Boolean);
+      return `<span class="gchip">${alts.length ? alts.join(" <i>or</i> ") : "?"}</span>`; });
+    h = h.replace(/^([^\s:<]{1,20}):/, "<strong>$1:</strong>");
+    return `<p>${h}</p>`; }).join("");
+}
+const points = () => qs.reduce((n,q)=>n+(q.type==="gap" ? gaps(q.text).length : 1),0);
+
+function render(){
+  app.innerHTML = `<section class="stage">
+    <h2>Questions</h2>
+    <p class="sub" id="count">${countLine()}</p>
+    ${qs.map(card).join("")}
+    <div class="rowline"><button class="btn" type="button" data-act="addq">Add question</button>
+      ${imp ? "" : `<button class="btn ghost" type="button" data-act="imp-open">Import questions</button>`}</div>
+    ${imp ? importer() : ""}
+  </section>`;
+}
+function countLine(){ const p=points(); return `${qs.length} question${qs.length===1?"":"s"}, ${p} point${p===1?"":"s"}. Click a question to open it.`; }
+function tag(q){ const p = problem(q); if(p) return p; if(q.type!=="gap") return q.opts.filter(o=>o.trim()).length+" answers";
+  const n = gaps(q.text).length; return n+" gap"+(n===1?"":"s"); }
+
+function card(q, i){
+  const open = openQ===q.id, p = problem(q);
+  const line = (q.text.trim().split("\n").filter(Boolean).find(l=>/\[/.test(l)) || q.text.trim().split("\n").filter(Boolean).pop() || "").replace(/\[[^\[\]]*\]/g,"_____");
+  return `<div class="q ${open?"open":""}" id="q${q.id}">
+    <div class="qhead">
+      <span class="n">${i+1}</span>
+      <button class="sum ${line?"":"blank"}" type="button" data-act="toggle" data-q="${q.id}">${line ? esc(line) : "New question"}</button>
+      <span class="ok" id="tag${q.id}">${esc(tag(q))}</span>
+      <button class="icon del" type="button" data-act="delq" data-q="${q.id}" aria-label="Remove question ${i+1}">×</button>
+    </div>
+    ${open ? `<div class="qbody">
+      <div class="seg" role="radiogroup" aria-label="Question type">
+        <label><input type="radio" name="type${q.id}" data-q="${q.id}" data-type="choice" ${q.type==="choice"?"checked":""}>Multiple choice</label>
+        <label><input type="radio" name="type${q.id}" data-q="${q.id}" data-type="gap" ${q.type==="gap"?"checked":""}>Fill in the gaps</label>
+      </div>
+      ${q.type==="gap" ? `
+      <div class="field"><label for="qt${q.id}">Text</label>
+        <textarea class="slab" id="qt${q.id}" data-q="${q.id}" rows="5" placeholder="I couldn’t agree [more].">${esc(q.text)}</textarea>
+        <div class="rowline"><button class="btn sm" type="button" data-act="mkgap" data-q="${q.id}">Make a gap</button>
+          <span class="hint">Select a word and click, or type the square brackets yourself. Two accepted answers: [don’t|do not]. A sentence, a dialogue or a whole paragraph all work.</span></div></div>
+      <div class="field"><span class="lab">Answer key</span>
+        <div class="prev" id="pv${q.id}">${preview(q.text) || `<p class="hint">Nothing yet.</p>`}</div>
+        <span class="hint">The student sees an empty box in place of each blue word. Each gap is one point. Capitals, extra spaces and the kind of apostrophe do not matter.</span></div>`
+      : `
+      <div class="field"><label for="qt${q.id}">Question</label>
+        <textarea class="slab" id="qt${q.id}" data-q="${q.id}" rows="4">${esc(q.text)}</textarea></div>
+      <div class="field"><span class="lab">Answers</span><div class="ans">
+        ${q.opts.map((o,k)=>`<div class="arow ${q.key===k?"right":""}">
+          <input type="radio" name="key${q.id}" data-q="${q.id}" data-k="${k}" ${q.key===k?"checked":""} aria-label="Answer ${L[k]} is correct">
+          <span class="let">${L[k]})</span>
+          <input class="slab" type="text" data-q="${q.id}" data-o="${k}" value="${esc(o)}" aria-label="Answer ${L[k]}"></div>`).join("")}
+      </div></div>`}
+    </div>` : ""}
+  </div>`;
+}
+
+function readRows(text){
+  return text.replace(/\r\n?/g,"\n").split("\n").filter(l=>l.trim()).map((l,i)=>{
+    const cells = l.split("\t").map(c=>c.trim()), t = cells[0];
+    if(cells.length===1 || cells.slice(1).every(c=>!c)) return {row:i+1, type:"gap", text:t, problem:gapProblem(t)};
+    const c = cells[cells.length-1].toLowerCase(), opts = cells.slice(1,-1).filter(Boolean), key = /^[a-f]$/.test(c) ? L.indexOf(c) : null;
+    return {row:i+1, type:"choice", text:t, opts, key, problem: opts.length<2 ? "Needs at least two answers" : key===null||key>=opts.length ? "Correct answer missing" : ""}; });
+}
+function importer(){
+  const rows = imp.rows, good = rows ? rows.filter(r=>!r.problem) : [];
+  return `<div class="imp">
+    <h3>Import questions</h3>
+    <div class="field"><label for="imp-text">Paste your rows here</label>
+      <span class="hint">Gap-fill: one sentence per row, answers in square brackets, nothing in the other columns. Multiple choice rows work as before, and the two can sit in one paste.</span>
+      <textarea id="imp-text">${esc(imp.text)}</textarea></div>
+    ${rows ? `<div class="field"><span class="lab">Check the result</span>
+      <span class="hint">${good.length} question${good.length===1?"":"s"} ready${rows.length-good.length ? `, ${rows.length-good.length} with a problem. Rows with a problem are left out.` : "."}</span>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Row</th><th>Question</th><th>Type</th><th>Points</th><th>Check</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="${r.problem?"badrow":""}"><td>${r.row}</td>
+          <td class="qc">${r.type==="gap" ? preview(r.text) : esc(r.text)}</td><td>${r.type==="gap"?"Fill in the gaps":"Multiple choice"}</td>
+          <td>${r.problem ? "" : r.type==="gap" ? gaps(r.text).length : 1}</td>
+          <td>${r.problem ? `<span class="prob">${esc(r.problem)}</span>` : `<span class="fine">✓</span>`}</td></tr>`).join("")}</tbody>
+      </table></div></div>` : ""}
+    <div class="rowline">
+      ${rows && good.length ? `<button class="btn primary" type="button" data-act="imp-add">Add ${good.length} question${good.length===1?"":"s"}</button><button class="btn" type="button" data-act="imp-check">Check again</button>`
+                           : `<button class="btn primary" type="button" data-act="imp-check">Check rows</button>`}
+      <button class="btn ghost" type="button" data-act="imp-close">Cancel</button>
+    </div></div>`;
+}
+
+const find = id => qs.find(q=>q.id===+id);
+// Typing updates the key, the tag and the count in place, so the cursor never jumps.
+function live(q){
+  const pv = document.getElementById("pv"+q.id); if(pv) pv.innerHTML = preview(q.text) || `<p class="hint">Nothing yet.</p>`;
+  const tg = document.getElementById("tag"+q.id); if(tg) tg.textContent = tag(q);
+  document.getElementById("count").textContent = countLine();
+}
+app.addEventListener("input", e=>{
+  const t = e.target;
+  if(t.id==="imp-text"){ imp.text = t.value; return; }
+  const q = find(t.dataset.q); if(!q) return;
+  if(t.tagName==="TEXTAREA"){ q.text = t.value; live(q); }
+  else if(t.dataset.o!==undefined){ q.opts[+t.dataset.o] = t.value; live(q); }
+});
+app.addEventListener("change", e=>{
+  const t = e.target, q = find(t.dataset.q); if(!q) return;
+  if(t.dataset.type){ q.type = t.dataset.type; render(); }
+  else if(t.dataset.k!==undefined){ q.key = +t.dataset.k; render(); }
+});
+app.addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  const q = find(b.dataset.q);
+  switch(b.dataset.act){
+    case "toggle": openQ = openQ===q.id ? null : q.id; return render();
+    case "delq": qs.splice(qs.indexOf(q),1); return render();
+    // A new question takes the type of the one before it.
+    case "addq": { const n = mk(qs.length ? qs[qs.length-1].type : "choice", ""); qs.push(n); openQ = n.id; render(); const f=document.getElementById("qt"+n.id); if(f) f.focus(); return; }
+    case "mkgap": { const ta = document.getElementById("qt"+q.id), a = ta.selectionStart, z = ta.selectionEnd;
+      if(a===z){ ta.focus(); return; }
+      const sel = ta.value.slice(a,z), lead = sel.match(/^\s*/)[0], trail = sel.match(/\s*$/)[0], core = sel.trim();
+      if(!core || /[\[\]]/.test(core)){ ta.focus(); return; }
+      ta.value = ta.value.slice(0,a) + lead + "[" + core + "]" + trail + ta.value.slice(z);
+      q.text = ta.value; live(q); ta.focus(); const pos = a + lead.length + core.length + 2; ta.setSelectionRange(pos,pos); return; }
+    case "imp-open": imp = {text:SAMPLE, rows:null}; return render();
+    case "imp-close": imp = null; return render();
+    case "imp-check": imp.rows = readRows(imp.text); return render();
+    case "imp-add": imp.rows.filter(r=>!r.problem).forEach(r=>qs.push(r.type==="gap" ? mk("gap", r.text) : mk("choice", r.text, r.opts, r.key))); imp = null; openQ = null; return render();
+  }
+});
+render();
+</script>
