@@ -54,6 +54,10 @@ class TBTTM_Results {
 	 * @return int|null
 	 */
 	public static function seconds( $started, $finished ) {
+		// An empty time is unknown; strtotime( ' UTC' ) would read it as now.
+		if ( '' === trim( (string) $started ) || '' === trim( (string) $finished ) ) {
+			return null;
+		}
 		$from = strtotime( (string) $started . ' UTC' );
 		$to   = strtotime( (string) $finished . ' UTC' );
 		if ( false === $from || false === $to || $to < $from ) {
