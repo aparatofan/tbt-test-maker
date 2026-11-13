@@ -31,6 +31,7 @@ require_once TBTTM_DIR . 'includes/class-tbttm-assets.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-classes.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-validator.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-attempts.php';
+require_once TBTTM_DIR . 'includes/class-tbttm-results.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-rest.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-teacher.php';
 require_once TBTTM_DIR . 'includes/class-tbttm-player.php';

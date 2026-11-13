@@ -572,6 +572,72 @@ class TBTTM_DB {
 	}
 
 	/**
+	 * A test's finished attempts, newest first, for the Results screen: who,
+	 * when and the score. The snapshot and the token are left out; the list
+	 * needs neither.
+	 *
+	 * @param int $test_id Test ID.
+	 * @param int $limit   Most rows to return.
+	 * @return object[]
+	 */
+	public static function get_finished_attempts( $test_id, $limit ) {
+		global $wpdb;
+		$table = self::attempts_table();
+		return (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, user_id, guest_name, score, total, percent, started_at, finished_at
+				FROM {$table} WHERE test_id = %d AND status = %s
+				ORDER BY finished_at DESC, id DESC LIMIT %d",
+				(int) $test_id,
+				self::ATTEMPT_FINISHED,
+				max( 1, (int) $limit )
+			)
+		);
+	}
+
+	/**
+	 * Who scored what on every finished attempt of a test: the three columns
+	 * the Results stats are counted from, with no limit.
+	 *
+	 * @param int $test_id Test ID.
+	 * @return object[] Rows with user_id, guest_name, percent.
+	 */
+	public static function get_finished_scores( $test_id ) {
+		global $wpdb;
+		$table = self::attempts_table();
+		return (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT user_id, guest_name, percent FROM {$table} WHERE test_id = %d AND status = %s",
+				(int) $test_id,
+				self::ATTEMPT_FINISHED
+			)
+		);
+	}
+
+	/**
+	 * A batch of finished attempts' snapshots, in ID order, for counting the
+	 * hardest questions without loading every snapshot at once.
+	 *
+	 * @param int $test_id  Test ID.
+	 * @param int $after_id Return attempts with an ID above this.
+	 * @param int $limit    Batch size.
+	 * @return object[] Rows with id, review.
+	 */
+	public static function get_finished_reviews( $test_id, $after_id, $limit ) {
+		global $wpdb;
+		$table = self::attempts_table();
+		return (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, review FROM {$table} WHERE test_id = %d AND status = %s AND id > %d ORDER BY id ASC LIMIT %d",
+				(int) $test_id,
+				self::ATTEMPT_FINISHED,
+				(int) $after_id,
+				max( 1, (int) $limit )
+			)
+		);
+	}
+
+	/**
 	 * The user's newest attempt on a test with the given status.
 	 *
 	 * @param int    $test_id Test ID.

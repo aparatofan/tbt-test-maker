@@ -7,7 +7,7 @@
  * "after each question" mode, whose answer was revealed at that moment.
  *
  * A finished attempt stores `review`: one entry per question, in order, with
- * what the student saw and chose. Results are always rendered from it, never
+ * the question's ID (from 0.3.0), what the student saw and what they chose. Results are always rendered from it, never
  * from the live questions, so editing a test later does not change old
  * results.
  */
@@ -141,6 +141,10 @@ class TBTTM_Attempts {
 				++$score;
 			}
 			$review[] = array(
+				// The question's ID, from 0.3.0: it lets the Results screen
+				// follow a question through later edits. Older snapshots
+				// have none.
+				'id'      => $qid,
 				'body'    => (string) $q['body'],
 				'options' => array_values( array_map( 'strval', $q['options'] ) ),
 				'chosen'  => $chosen,
