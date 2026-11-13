@@ -5,7 +5,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 ## Start here
 
 - Work from the task, not from a full-repository scan.
-- The current release is specified in `docs/SPEC-0.2.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
+- The current release is specified in `docs/SPEC-0.3.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
 - `docs/prototypes/*.html` are the approved designs. Where the spec and a prototype disagree, the spec wins; where the spec is silent, the prototype decides.
 - First inspect `git status`, then read only the files named in the task or located by targeted search.
 - Do not change unrelated code, formatting, wording, or styling.
@@ -25,6 +25,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 - **A student's answers are never lost.** Every answer is saved to the server as it is given and mirrored in the browser. A failed request keeps the answers and retries; it never clears state or navigates away.
 - There is no public read route for test content. Students get questions only inside the server-rendered student page, after the access check.
 - A finished attempt stores a snapshot of what the student saw, so later edits to a test never change old results.
+- Results are owner-only and always read from the stored snapshot. Review entries carry the question `id` from 0.3.0; older ones do not.
 - A guest attempt (`user_id = 0`) is owned by its token, sent in `X-TBTTM-Token`. Guests never get a nonce.
 - TBT Notes and TBT Hub are optional. The plugin must work when they are absent.
 - Teacher-page lists and mutations are owner-scoped, including for administrators.
@@ -43,6 +44,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 for f in tbt-test-maker.php includes/*.php; do php -l "$f"; done
 for f in assets/js/*.js; do node --check "$f"; done
 php tests/test-validator.php
+php tests/test-results.php
 node tests/test-parse.js
 ```
 

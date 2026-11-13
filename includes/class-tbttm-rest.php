@@ -117,6 +117,33 @@ class TBTTM_Rest {
 
 		register_rest_route(
 			self::NS,
+			'/tests/(?P<id>\d+)/results',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'permission_callback' => $teacher,
+				'callback'            => array( $this, 'get_results' ),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
+			'/tests/(?P<id>\d+)/attempts/(?P<attempt>\d+)',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'permission_callback' => $teacher,
+					'callback'            => array( $this, 'get_attempt_review' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'permission_callback' => $teacher,
+					'callback'            => array( $this, 'remove_attempt' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NS,
 			'/classes/(?P<id>\d+)/lessons',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -289,6 +316,7 @@ class TBTTM_Rest {
 			'pass_mark'   => null === $row->pass_mark ? null : (int) $row->pass_mark,
 			'url'         => TBTTM_DB::STATUS_PUBLISHED === $row->status ? TBTTM_Urls::test_url( $row->slug ) : '',
 			'edit_url'    => TBTTM_Urls::edit_url( (int) $row->id ),
+			'results_url' => TBTTM_Urls::results_url( (int) $row->id ),
 			'edited'      => self::edited( (string) $row->updated_at ),
 		);
 	}
@@ -624,6 +652,81 @@ class TBTTM_Rest {
 		}
 		TBTTM_DB::delete_test( (int) $row->id );
 		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Results: the owner's view of who took a test
+	 * ------------------------------------------------------------------- */
+
+	/**
+	 * The Results screen's summary and list. Owner only: the capability does
+	 * not open someone else's test, administrators included.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function get_results( WP_REST_Request $request ) {
+		$test = TBTTM_DB::get_owned_test( (int) $request['id'], get_current_user_id() );
+		if ( ! $test ) {
+			return self::not_found();
+		}
+		return rest_ensure_response( TBTTM_Results::summary( $test ) );
+	}
+
+	/**
+	 * One finished attempt's answers, from its snapshot. The attempt must
+	 * belong to the test in the URL, and the test to the caller.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function get_attempt_review( WP_REST_Request $request ) {
+		$test = TBTTM_DB::get_owned_test( (int) $request['id'], get_current_user_id() );
+		if ( ! $test ) {
+			return self::not_found();
+		}
+		$attempt = TBTTM_DB::get_attempt( (int) $request['attempt'] );
+		if ( ! $attempt || (int) $attempt->test_id !== (int) $test->id || TBTTM_DB::ATTEMPT_FINISHED !== $attempt->status ) {
+			return self::no_such_attempt();
+		}
+		$review = json_decode( (string) $attempt->review, true );
+		return rest_ensure_response(
+			array(
+				'id'     => (int) $attempt->id,
+				'review' => is_array( $review ) ? array_values( $review ) : array(),
+			)
+		);
+	}
+
+	/**
+	 * Remove one attempt of the caller's own test, finished or not, and
+	 * answer with the numbers as they now stand.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function remove_attempt( WP_REST_Request $request ) {
+		$test = TBTTM_DB::get_owned_test( (int) $request['id'], get_current_user_id() );
+		if ( ! $test ) {
+			return self::not_found();
+		}
+		$attempt = TBTTM_DB::get_attempt( (int) $request['attempt'] );
+		if ( ! $attempt || (int) $attempt->test_id !== (int) $test->id ) {
+			return self::no_such_attempt();
+		}
+		TBTTM_DB::delete_attempt( (int) $attempt->id );
+
+		return rest_ensure_response(
+			array(
+				'deleted' => true,
+				'stats'   => TBTTM_Results::stats( (int) $test->id, null === $test->pass_mark ? null : (int) $test->pass_mark ),
+				'hardest' => TBTTM_Results::hardest_for( (int) $test->id ),
+			)
+		);
+	}
+
+	private static function no_such_attempt() {
+		return new WP_Error( 'tbttm_no_attempt', __( 'That attempt no longer exists.', 'tbt-test-maker' ), array( 'status' => 404 ) );
 	}
 
 	/**

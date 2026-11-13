@@ -22,6 +22,12 @@ class TBTTM_Urls {
 	/** Query parameter keeping the library's class filter: a class ID or "none". */
 	const CLASS_PARAM = 'tbttm_class';
 
+	/** Query parameter keeping the library's search text. Left out when empty. */
+	const SEARCH_PARAM = 'tbttm_search';
+
+	/** Query parameter opening a test's Results screen. */
+	const RESULTS_PARAM = 'tbttm_results';
+
 	/**
 	 * The student page: the published page holding [tbt_test], or ''.
 	 *
@@ -94,7 +100,40 @@ class TBTTM_Urls {
 	 */
 	public static function library_url() {
 		$base = self::builder_page();
-		return '' === $base ? '' : remove_query_arg( array( self::EDIT_PARAM, self::NEW_PARAM ), $base );
+		return '' === $base ? '' : remove_query_arg( array( self::EDIT_PARAM, self::NEW_PARAM, self::RESULTS_PARAM ), $base );
+	}
+
+	/**
+	 * Link opening one test's Results screen.
+	 *
+	 * @param int $test_id Test ID.
+	 * @return string
+	 */
+	public static function results_url( $test_id ) {
+		$base = self::library_url();
+		return '' === $base ? '' : add_query_arg( self::RESULTS_PARAM, (int) $test_id, $base );
+	}
+
+	/**
+	 * The library's filter as it stands in this request: the class and the
+	 * search text, each only when set. Carried from the library to a Results
+	 * screen and back, so "Back to tests" returns to the same list.
+	 *
+	 * @return array<string, string> Query parameter → value.
+	 */
+	public static function filter_args() {
+		$args = array();
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only filter.
+		$class = isset( $_GET[ self::CLASS_PARAM ] ) && is_scalar( $_GET[ self::CLASS_PARAM ] ) ? sanitize_key( wp_unslash( $_GET[ self::CLASS_PARAM ] ) ) : '';
+		$search = isset( $_GET[ self::SEARCH_PARAM ] ) && is_scalar( $_GET[ self::SEARCH_PARAM ] ) ? trim( sanitize_text_field( wp_unslash( $_GET[ self::SEARCH_PARAM ] ) ) ) : '';
+		// phpcs:enable
+		if ( '' !== $class ) {
+			$args[ self::CLASS_PARAM ] = $class;
+		}
+		if ( '' !== $search ) {
+			$args[ self::SEARCH_PARAM ] = mb_substr( $search, 0, 200, 'UTF-8' );
+		}
+		return $args;
 	}
 
 	/**

@@ -1053,6 +1053,323 @@ body {
 	}
 }
 
+/* ---------- Results ----------
+   A test's results, for its owner: a head, four stat cards, the attempts
+   table and the hardest questions. Tokens only. A desktop screen; on a
+   phone the table scrolls sideways inside its card. */
+
+/* The attempt count on a library row, once there are results to open. */
+.tbttm .tbttm-test-row__count {
+	color: var(--tbt-blue);
+	font-weight: 600;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.tbttm .tbttm-test-row__count:focus-visible {
+	border-radius: 2px;
+	outline: 2px solid var(--tbt-blue);
+	outline-offset: 2px;
+}
+
+.tbttm .tbttm-results {
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+	margin-top: 16px;
+}
+
+.tbttm .tbttm-results .tbttm-stage {
+	gap: 24px;
+}
+
+.tbttm .tbttm-rhead {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.tbttm .tbttm-rhead__title {
+	margin: 0;
+	color: var(--tbt-blue);
+	font-family: var(--tbt-font-content);
+	font-size: 28px;
+	font-weight: 700;
+	line-height: 1.25;
+	letter-spacing: -.01em;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-rhead__facts {
+	margin: 0;
+	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
+	font-size: 15px;
+}
+
+.tbttm .tbttm-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 16px;
+}
+
+.tbttm .tbttm-stat {
+	padding: 16px 24px;
+	border: 1px solid var(--tbt-border);
+	border-radius: 16px;
+	background: var(--tbt-surface);
+}
+
+.tbttm .tbttm-stat__v {
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-content);
+	font-size: 28px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+}
+
+.tbttm .tbttm-stat__k {
+	color: var(--tbt-muted);
+	font-size: 14px;
+}
+
+.tbttm .tbttm-rtools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 24px;
+	align-items: center;
+}
+
+.tbttm .tbttm-rtools__search {
+	width: 300px;
+	max-width: 100%;
+}
+
+.tbttm .tbttm-rtools__search .tbttm-input::-webkit-search-cancel-button {
+	cursor: pointer;
+}
+
+.tbttm .tbttm-check {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin: 0;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-ui);
+	font-size: 15px;
+	cursor: pointer;
+}
+
+.tbttm .tbttm-check input {
+	width: 18px;
+	height: 18px;
+	margin: 0;
+	accent-color: var(--tbt-blue);
+}
+
+/* The attempts table. */
+.tbttm .tbttm-rtwrap {
+	overflow-x: auto;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-control);
+	background: var(--tbt-surface);
+}
+
+.tbttm .tbttm-rt {
+	width: 100%;
+	margin: 0;
+	border: 0;
+	border-collapse: collapse;
+	color: var(--tbt-ink);
+	font-family: var(--tbt-font-ui);
+	font-size: 14px;
+}
+
+.tbttm .tbttm-rt th,
+.tbttm .tbttm-rt td {
+	padding: 8px 12px;
+	border: 0;
+	border-bottom: 1px solid var(--tbt-border);
+	background: none;
+	text-align: left;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+.tbttm .tbttm-rt th {
+	color: var(--tbt-muted);
+	font-weight: 600;
+}
+
+.tbttm .tbttm-rt tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.tbttm .tbttm-rt td.tbttm-rt__name {
+	font-weight: 600;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-rt__guest {
+	margin-left: 6px;
+	color: var(--tbttm-faint);
+	font-size: 13px;
+	font-weight: 400;
+	white-space: nowrap;
+}
+
+.tbttm .tbttm-rt td.tbttm-rt__num {
+	font-variant-numeric: tabular-nums;
+}
+
+.tbttm .tbttm-rt td.tbttm-rt__act {
+	text-align: right;
+}
+
+.tbttm .tbttm-rt tr.tbttm-rt__att {
+	cursor: pointer;
+}
+
+.tbttm .tbttm-rt tr.tbttm-rt__att:hover td,
+.tbttm .tbttm-rt tr.tbttm-rt__att.is-open td {
+	background: var(--tbt-selected-bg);
+}
+
+.tbttm .tbttm-rmeter {
+	display: inline-block;
+	overflow: hidden;
+	width: 72px;
+	height: 6px;
+	margin-left: 10px;
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-input);
+	vertical-align: middle;
+}
+
+.tbttm .tbttm-rmeter i {
+	display: block;
+	height: 100%;
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-blue);
+}
+
+/* One attempt's answers, open under its row. */
+.tbttm .tbttm-rt tr.tbttm-rt__detail td {
+	padding: 16px 24px;
+	background: var(--tbt-canvas);
+	white-space: normal;
+}
+
+.tbttm .tbttm-rt__detail p {
+	margin: 0;
+}
+
+.tbttm .tbttm-answers__head {
+	margin-bottom: 12px;
+}
+
+.tbttm .tbttm-alist {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tbttm .tbttm-alist li {
+	display: grid;
+	grid-template-columns: 24px 1fr;
+	gap: 2px 8px;
+	margin: 0;
+	padding: 0;
+	font-size: 14px;
+	list-style: none;
+}
+
+.tbttm .tbttm-alist__mark {
+	font-weight: 700;
+}
+
+.tbttm .tbttm-alist__mark.is-ok {
+	color: var(--tbt-success);
+}
+
+.tbttm .tbttm-alist__mark.is-bad {
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-alist__q {
+	min-width: 0;
+	font-family: var(--tbt-font-content);
+	font-size: 15px;
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-alist__a {
+	grid-column: 2;
+	min-width: 0;
+	color: var(--tbt-muted);
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-alist__a b {
+	font-weight: 600;
+}
+
+.tbttm .tbttm-alist__a .is-yours {
+	color: var(--tbt-error);
+}
+
+.tbttm .tbttm-alist__a .is-right {
+	color: var(--tbt-success);
+}
+
+/* Hardest questions. */
+.tbttm .tbttm-hard {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tbttm .tbttm-hard li {
+	display: grid;
+	grid-template-columns: 64px 1fr;
+	gap: 16px;
+	align-items: baseline;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tbttm .tbttm-hard__p {
+	color: var(--tbt-error);
+	font-family: var(--tbt-font-content);
+	font-size: 18px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.tbttm .tbttm-hard__t {
+	min-width: 0;
+	font-family: var(--tbt-font-content);
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-hard__t span {
+	display: block;
+	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
+	font-size: 14px;
+	font-weight: 400;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.tbttm .tbttm-test-row:hover {
 		transform: none;
