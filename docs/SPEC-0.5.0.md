@@ -106,11 +106,11 @@ Follow `student-gapfill.html`.
 - **Saving.** Each change is mirrored in the browser at once and sent with the existing delayed save. A failed save keeps the text and retries, as now. Leaving the question or pressing `FINISH TEST` sends what is waiting.
 - **Enter** moves to the next gap; in the last gap it does what the main button does.
 - **Done.** A gap question is done when every gap has text. The tile turns the lighter blue then, and loses it again if a gap is emptied.
-- **A test with one question** shows no tiles, no question number and no `Back` button. The quiet line reads `3 of 7 gaps filled`, and the instruction sits above the text. A test with more questions keeps "Question 2 of 5 · 3 left".
+- **A test with one question**, of either type, shows no tiles, no question number and no `Back` button. For a gap question the quiet line reads `3 of 7 gaps filled`, and the instruction sits above the text. A test with more questions keeps "Question 2 of 5 · 3 left".
 - **Unanswered warning.** With several questions, as now. With one question: "**2** gaps are still empty." and `Finish anyway`.
-- **After each question.** The button reads `Check answers` when the question has more than one gap. After the check the fields are locked, right ones green and wrong ones red. The notice reads "Correct." or "1 of 2 points. Correct: **concerned**", listing the first accepted answer of each wrong gap. The tile is green only when every gap is right.
+- **After each question.** The button reads `Check answers` when the question has more than one gap. It is enabled as soon as one gap has text, so a student who cannot fill every gap is never stuck; a gap left empty is marked wrong. (The prototype waits for every gap; the spec wins.) After the check the fields are locked, right ones green and wrong ones red. The notice reads "Correct." or "1 of 2 points. Correct: **concerned**", listing the first accepted answer of each wrong gap. The tile is green only when every gap is right.
 - **Result page.** The headline is points: `5 / 7`. A gap question shows its text with the student's words put back in: a right word in green; a wrong word crossed out in red, followed by the right one in green; an empty gap as "(empty)" crossed out. A question with more than one gap adds "· 1 of 2 points".
-- **Start screen.** The facts count what the student will do: a test with only gap questions says `7 gaps` in place of `N questions`. Other tests are unchanged. The time estimate uses points.
+- **Start screen.** The facts count what the student will do: a test with only gap questions says `7 gaps` in place of `N questions`. Other tests are unchanged. There is no time estimate. "You answered X of N questions" on a resumed test counts a gap question only when every gap has text, on the server as in the browser.
 
 ## Task 4 — The builder
 
@@ -151,7 +151,8 @@ Extend `tests/test-results.php` for a gap question in `hardest()` and for a mix 
 - `TBTTM_VERSION` and the plugin header read `0.5.0`. Update the plugin description.
 - `CLAUDE.md`: point "The current release" at `docs/SPEC-0.5.0.md`. Add `php tests/test-gaps.php` to Validation. Add under Architecture: "A gap question's stored body holds its answers. The student page only ever receives `TBTTM_Gaps::public_body()`. Scores count points: one per multiple choice question, one per gap."
 - `README.md`: one line for 0.5.0.
-- Commit this spec and the two prototypes as the first commit on the branch.
+- This spec and the two prototypes are already committed on `claude/gap-fill-0.5.0`. Build on that branch.
+- `TBTTM_Results::seconds()` returns null for an empty time, as its test expects. Its own commit.
 - Run the checks. Open a PR. **Do not merge, and do not push to `main`.** The description lists what changed, what was checked, and what needs a live check.
 
 ---
