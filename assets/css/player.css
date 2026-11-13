@@ -209,6 +209,11 @@
 	line-height: 1.5;
 }
 
+/* Your name, then Your email: the same field twice, a step apart. */
+.tbttm .tbttm-name + .tbttm-name {
+	margin-top: -8px;
+}
+
 .tbttm .tbttm-name.is-bad .tbttm-name__input {
 	border-color: var(--tbt-error);
 	background: var(--tbt-error-bg);

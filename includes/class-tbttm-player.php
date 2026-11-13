@@ -114,6 +114,17 @@ class TBTTM_Player {
 			}
 		}
 
+		// A link from the result email carries the result's token. It goes
+		// into the login return address too, so logging in comes back to it.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only lookup by token.
+		$result_token = isset( $_GET[ TBTTM_Urls::RESULT_PARAM ] ) && is_string( $_GET[ TBTTM_Urls::RESULT_PARAM ] ) ? strtolower( trim( wp_unslash( $_GET[ TBTTM_Urls::RESULT_PARAM ] ) ) ) : '';
+		if ( ! preg_match( '/^[a-f0-9]{32}$/', $result_token ) ) {
+			$result_token = '';
+		}
+		if ( '' !== $result_token && $here ) {
+			$here = add_query_arg( TBTTM_Urls::RESULT_PARAM, $result_token, $here );
+		}
+
 		if ( '' === $slug ) {
 			return $this->wrap(
 				TBTTM_Assets::message_card(
@@ -140,6 +151,30 @@ class TBTTM_Player {
 		}
 
 		$is_guest = $user_id <= 0;
+
+		// The result a link asks for: a finished attempt on this test. A
+		// token that resolves to nothing, or to another test, is ignored and
+		// the ordinary start screen shows.
+		$linked = '' !== $result_token ? TBTTM_DB::get_attempt_by_token( $result_token ) : null;
+		if ( $linked && ( (int) $linked->test_id !== (int) $test->id || TBTTM_DB::ATTEMPT_FINISHED !== $linked->status ) ) {
+			$linked = null;
+		}
+		// A logged-in student's result needs that student. On an open test
+		// nothing else would ask a logged-out visitor to log in, so this does.
+		if ( $linked && $is_guest && (int) $linked->user_id > 0 && 'open' === $test->access ) {
+			return $this->wrap(
+				TBTTM_Assets::message_card(
+					__( 'Log in to see your result', 'tbt-test-maker' ),
+					__( 'This result belongs to a TBT student. Log in and it opens straight away.', 'tbt-test-maker' ),
+					wp_login_url( $here ? $here : '' ),
+					__( 'Log in', 'tbt-test-maker' )
+				)
+			);
+		}
+		// Shown only to whoever it belongs to: a guest's by its token, a
+		// student's to that student. Anyone else gets the start screen.
+		$open_result = $linked && ( (int) $linked->user_id <= 0 || (int) $linked->user_id === $user_id ) ? (string) $linked->token : '';
+
 		if ( $is_guest && 'open' !== $test->access ) {
 			return $this->wrap(
 				TBTTM_Assets::message_card(
@@ -194,6 +229,10 @@ class TBTTM_Player {
 			'resume'     => $resume,
 			'lastResult' => $last_result,
 			'guest'      => $is_guest,
+			// A guest on a test that emails results types an email too.
+			'askEmail'   => $is_guest && ! $is_draft && ! empty( $test->email_result ),
+			// The result a link from the email asks for, opened on load.
+			'openResult' => $is_draft ? '' : $open_result,
 		);
 
 		// Only a logged-in student on a published test reports to Class

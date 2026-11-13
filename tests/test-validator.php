@@ -217,6 +217,20 @@ same( $v->sanitise( test( array( 'class_id' => '', 'lesson_id' => 40 ) ) )['less
 $r = $v->validate( test( array( 'class_id' => 12, 'lesson_id' => 40 ) ) );
 same( array( $r['class_id'], $r['lesson_id'] ), array( 12, 40 ), 'class and lesson: validate() carries both' );
 
+/* ---------- certificate and email the result ---------- */
+
+foreach ( array( 'certificate', 'email_result' ) as $field ) {
+	same( $v->sanitise( array( 'title' => 'T' ) )[ $field ], false, "{$field}: off by default" );
+	same( $v->sanitise( test( array( $field => true ) ) )[ $field ], true, "{$field}: true turns it on" );
+	same( $v->sanitise( test( array( $field => false ) ) )[ $field ], false, "{$field}: false keeps it off" );
+	foreach ( array( 1, '1', 'true', 'on', 'yes', array( true ), null, 0, '' ) as $junk ) {
+		same( $v->sanitise( test( array( $field => $junk ) ) )[ $field ], false, "{$field}: anything but true is false: " . var_export( $junk, true ) );
+	}
+	same( $v->validate( test( array( $field => true ) ) )[ $field ], true, "{$field}: validate() carries it" );
+}
+$r = $v->sanitise( test( array( 'certificate' => true ) ) );
+same( array( $r['certificate'], $r['email_result'] ), array( true, false ), 'certificate and email are independent' );
+
 /* ---------- drafts ---------- */
 
 $draft = test(

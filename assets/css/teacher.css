@@ -1221,6 +1221,20 @@ body {
 	white-space: nowrap;
 }
 
+/* A guest's email, on its own line under the name while the attempt is open. */
+.tbttm .tbttm-rt__email {
+	display: block;
+	color: var(--tbt-muted);
+	font-size: 13px;
+	font-weight: 400;
+	overflow-wrap: anywhere;
+}
+
+.tbttm .tbttm-answers__note {
+	flex-basis: 100%;
+	margin: 0;
+}
+
 .tbttm .tbttm-rt td.tbttm-rt__num {
 	font-variant-numeric: tabular-nums;
 }

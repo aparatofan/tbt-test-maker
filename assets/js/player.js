@@ -151,6 +151,47 @@
 		} );
 	}
 
+	/**
+	 * Fetch a PDF from a REST route. Resolves with { blob, name }; rejects
+	 * on anything that is not a PDF. An expired nonce is refreshed once.
+	 */
+	function fetchPdf( url, retried ) {
+		var headers = {};
+		if ( CFG.nonce ) {
+			headers[ 'X-WP-Nonce' ] = CFG.nonce;
+		}
+		return fetch( url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: headers } ).then( function ( res ) {
+			var type = res.headers.get( 'Content-Type' ) || '';
+			if ( res.ok && type.indexOf( 'application/pdf' ) === 0 ) {
+				var match = /filename="?([^";]+)"?/i.exec( res.headers.get( 'Content-Disposition' ) || '' );
+				return res.blob().then( function ( blob ) {
+					return { blob: blob, name: match ? match[ 1 ] : 'certificate.pdf' };
+				} );
+			}
+			return res.json().catch( function () { return {}; } ).then( function ( data ) {
+				if ( data && data.code === 'rest_cookie_invalid_nonce' && ! retried && CFG.nonce ) {
+					return refreshNonce().then( function () {
+						return fetchPdf( url, true );
+					} );
+				}
+				throw new Error( 'certificate' );
+			} );
+		} );
+	}
+
+	/** Hand a file to the browser as a download. */
+	function saveFile( blob, name ) {
+		var url = window.URL.createObjectURL( blob );
+		var a = document.createElement( 'a' );
+		a.href = url;
+		a.download = name;
+		a.style.display = 'none';
+		document.body.appendChild( a );
+		a.click();
+		document.body.removeChild( a );
+		setTimeout( function () { window.URL.revokeObjectURL( url ); }, 60000 );
+	}
+
 	/* ---------------------------------------------------------------------
 	 * One test on the page
 	 * ------------------------------------------------------------------- */
@@ -179,6 +220,11 @@
 		var NAME_ID = 'tbttm-name-' + T.id;
 		var NAME_HINT = 'Shown on your result.';
 		var NAME_MISSING = 'Type your name to start.';
+		// On a test that emails results, a guest types an email as well.
+		var ASK_EMAIL = GUEST && !! data.askEmail;
+		var EMAIL_ID = 'tbttm-email-' + T.id;
+		var EMAIL_HINT = 'We send your result here. Nothing else.';
+		var EMAIL_MISSING = 'Type your email to start.';
 		var guest = GUEST ? readGuest() : null;
 
 		// Class Progress in TBT Notes: only for a logged-in student who is
@@ -212,6 +258,10 @@
 			justDone: -1,
 			name: guest ? guest.name : '',
 			nameError: false,
+			email: guest ? guest.email : '',
+			emailError: false,
+			certBusy: false,
+			certError: false,
 		};
 		var saveTimer = null;
 		var retryTimer = null;
@@ -237,7 +287,7 @@
 			return store( function ( ls ) {
 				var v = JSON.parse( ls.getItem( GKEY ) || 'null' );
 				return v && typeof v === 'object' && v.attempt && /^[a-f0-9]{32}$/.test( String( v.token ) )
-					? { attempt: +v.attempt, token: String( v.token ), name: String( v.name || '' ) }
+					? { attempt: +v.attempt, token: String( v.token ), name: String( v.name || '' ), email: String( v.email || '' ) }
 					: null;
 			} ) || null;
 		}
@@ -272,6 +322,16 @@
 		/** How many of these answers belong to questions still in the test. */
 		function countKnown( answers ) {
 			return Q.filter( function ( q ) { return answers[ q.id ] !== undefined; } ).length;
+		}
+
+		/** A simple shape check; the server decides with is_email(). */
+		function validEmail( text ) {
+			return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test( String( text || '' ).trim() );
+		}
+
+		/** Is the email still to be asked? Not once this browser holds one. */
+		function needsEmail() {
+			return ASK_EMAIL && ! ( guest && validEmail( guest.email ) );
 		}
 
 		function cleanName( text ) {
@@ -554,6 +614,7 @@
 			if ( s.busy ) {
 				return;
 			}
+			s.certError = false;
 			if ( GUEST ) {
 				startGuest( restart );
 				return;
@@ -573,11 +634,15 @@
 
 		/* ----- starting, as a guest ----- */
 
-		function focusName() {
-			var field = document.getElementById( NAME_ID );
+		function focusField( id ) {
+			var field = document.getElementById( id );
 			if ( field ) {
 				field.focus( { preventScroll: true } );
 			}
+		}
+
+		function focusName() {
+			focusField( NAME_ID );
 		}
 
 		/**
@@ -591,31 +656,42 @@
 				return;
 			}
 			var name = cleanName( guest ? guest.name : s.name );
-			if ( name.length < 2 ) {
+			var email = ASK_EMAIL ? String( guest && validEmail( guest.email ) ? guest.email : s.email ).trim() : '';
+			var badName = name.length < 2;
+			var badEmail = ASK_EMAIL && ! validEmail( email );
+			if ( badName || badEmail ) {
 				// Try again on a result opened later: back to the start
-				// screen, where the name is asked, without scolding.
-				s.nameError = s.view === 'start';
+				// screen, where they are asked, without scolding.
+				s.nameError = badName && s.view === 'start';
+				s.emailError = badEmail && s.view === 'start';
 				s.view = 'start';
 				render();
-				focusName();
+				focusField( badName ? NAME_ID : EMAIL_ID );
 				return;
 			}
-			newGuestAttempt( name, null, !! restart );
+			newGuestAttempt( name, null, !! restart, email );
 		}
 
 		/**
 		 * A new attempt under this name. `carry` holds answers from an attempt
 		 * the server no longer knows; they go to the new one at once.
 		 */
-		function newGuestAttempt( name, carry, restart ) {
+		function newGuestAttempt( name, carry, restart, email ) {
+			email = ASK_EMAIL ? String( email || '' ).trim() : '';
 			s.busy = true;
 			s.startError = '';
 			s.nameError = false;
+			s.emailError = false;
 			render();
-			call( 'POST', 'attempts', { test: T.id, name: name } ).then( function ( state ) {
-				guest = { attempt: state.id, token: state.token, name: name };
+			var body = { test: T.id, name: name };
+			if ( email ) {
+				body.email = email;
+			}
+			call( 'POST', 'attempts', body ).then( function ( state ) {
+				guest = { attempt: state.id, token: state.token, name: name, email: email };
 				writeGuest();
 				s.name = name;
+				s.email = email;
 				s.attempt = null;
 				if ( carry ) {
 					store( function ( ls ) {
@@ -632,6 +708,18 @@
 					s.view = 'start';
 					render();
 					focusName();
+					return;
+				}
+				if ( err.code === 'tbttm_no_email' ) {
+					// The email this browser holds, if any, is no good: ask again.
+					if ( guest ) {
+						guest.email = '';
+						writeGuest();
+					}
+					s.emailError = true;
+					s.view = 'start';
+					render();
+					focusField( EMAIL_ID );
 					return;
 				}
 				s.startError = err.status === 401
@@ -662,7 +750,7 @@
 					return;
 				}
 				if ( err.code === 'tbttm_no_attempt' ) {
-					newGuestAttempt( guest.name, answers, false );
+					newGuestAttempt( guest.name, answers, false, guest.email );
 					return;
 				}
 				s.startError = 'We couldn’t open your test. Check your connection and try again.';
@@ -825,6 +913,29 @@
 			} );
 		}
 
+		/**
+		 * Download the certificate of the result on screen. An extra: if it
+		 * cannot be made, a line says so and the result stays as it is.
+		 */
+		function downloadCertificate() {
+			var token = s.result && s.result.token;
+			if ( ! token || s.certBusy ) {
+				return;
+			}
+			s.certBusy = true;
+			s.certError = false;
+			render();
+			fetchPdf( CFG.rest + 'attempts/' + token + '/certificate', false ).then( function ( file ) {
+				s.certBusy = false;
+				render();
+				saveFile( file.blob, file.name );
+			}, function () {
+				s.certBusy = false;
+				s.certError = true;
+				render();
+			} );
+		}
+
 		function scrollToTop() {
 			var top = root.getBoundingClientRect().top + window.pageYOffset - 120;
 			if ( window.pageYOffset > top ) {
@@ -894,6 +1005,14 @@
 					+ ' value="' + esc( s.name ) + '" placeholder="e.g. Milena" aria-describedby="' + NAME_ID + '-hint"' + ( s.nameError ? ' aria-invalid="true"' : '' ) + '>'
 					+ '<span class="tbttm-name__hint" id="' + NAME_ID + '-hint" data-tbttm-namehint' + ( s.nameError ? ' role="alert"' : '' ) + '>'
 					+ ( s.nameError ? NAME_MISSING : NAME_HINT ) + '</span></div>';
+			}
+			if ( needsEmail() ) {
+				html += '<div class="tbttm-name' + ( s.emailError ? ' is-bad' : '' ) + '" data-tbttm-emailbox>'
+					+ '<label class="tbttm-name__label" for="' + EMAIL_ID + '">Your email</label>'
+					+ '<input class="tbttm-name__input" id="' + EMAIL_ID + '" type="email" inputmode="email" autocomplete="email" maxlength="190" data-tbttm-email'
+					+ ' value="' + esc( s.email ) + '" placeholder="e.g. milena@example.com" aria-describedby="' + EMAIL_ID + '-hint"' + ( s.emailError ? ' aria-invalid="true"' : '' ) + '>'
+					+ '<span class="tbttm-name__hint" id="' + EMAIL_ID + '-hint" data-tbttm-emailhint' + ( s.emailError ? ' role="alert"' : '' ) + '>'
+					+ ( s.emailError ? EMAIL_MISSING : EMAIL_HINT ) + '</span></div>';
 			}
 			html += '<div class="tbttm-row tbttm-start__actions">'
 				+ '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="start"' + ( s.busy ? ' disabled' : '' ) + '>'
@@ -1070,7 +1189,14 @@
 			if ( s.startError ) {
 				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>' + esc( s.startError ) + '</p></div>';
 			}
-			html += '<div class="tbttm-row"><button class="tbttm-btn tbttm-btn--cta" type="button" data-act="start"' + ( s.busy ? ' disabled' : '' ) + '>Try again</button></div>';
+			if ( s.certError ) {
+				html += '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>We couldn’t make your certificate. Try again in a moment.</p></div>';
+			}
+			html += '<div class="tbttm-row"><button class="tbttm-btn tbttm-btn--cta" type="button" data-act="start"' + ( s.busy ? ' disabled' : '' ) + '>Try again</button>'
+				+ ( r.certificate && r.token
+					? '<button class="tbttm-btn" type="button" data-act="certificate"' + ( s.certBusy ? ' disabled' : '' ) + '>' + ( s.certBusy ? 'Making your certificate…' : 'Download certificate' ) + '</button>'
+					: '' )
+				+ '</div>';
 			return html;
 		}
 
@@ -1095,27 +1221,40 @@
 		// loses the caret. The red mark goes as soon as the guest types.
 		root.addEventListener( 'input', function ( e ) {
 			var t = e.target;
-			if ( ! t.hasAttribute || ! t.hasAttribute( 'data-tbttm-name' ) ) {
+			if ( ! t.hasAttribute ) {
 				return;
 			}
-			s.name = t.value;
-			if ( s.nameError ) {
-				s.nameError = false;
+			var isName = t.hasAttribute( 'data-tbttm-name' );
+			var isEmail = t.hasAttribute( 'data-tbttm-email' );
+			if ( ! isName && ! isEmail ) {
+				return;
+			}
+			if ( isName ) {
+				s.name = t.value;
+			} else {
+				s.email = t.value;
+			}
+			if ( isName ? s.nameError : s.emailError ) {
+				if ( isName ) {
+					s.nameError = false;
+				} else {
+					s.emailError = false;
+				}
 				t.removeAttribute( 'aria-invalid' );
-				var box = root.querySelector( '[data-tbttm-namebox]' );
-				var hint = root.querySelector( '[data-tbttm-namehint]' );
+				var box = root.querySelector( isName ? '[data-tbttm-namebox]' : '[data-tbttm-emailbox]' );
+				var hint = root.querySelector( isName ? '[data-tbttm-namehint]' : '[data-tbttm-emailhint]' );
 				if ( box ) {
 					box.classList.remove( 'is-bad' );
 				}
 				if ( hint ) {
 					hint.removeAttribute( 'role' );
-					hint.textContent = NAME_HINT;
+					hint.textContent = isName ? NAME_HINT : EMAIL_HINT;
 				}
 			}
 		} );
 
 		root.addEventListener( 'keydown', function ( e ) {
-			if ( e.key === 'Enter' && e.target.hasAttribute && e.target.hasAttribute( 'data-tbttm-name' ) ) {
+			if ( e.key === 'Enter' && e.target.hasAttribute && ( e.target.hasAttribute( 'data-tbttm-name' ) || e.target.hasAttribute( 'data-tbttm-email' ) ) ) {
 				e.preventDefault();
 				start( false );
 			}
@@ -1147,6 +1286,9 @@
 					break;
 				case 'last':
 					showResult( s.lastResult );
+					break;
+				case 'certificate':
+					downloadCertificate();
 					break;
 				case 'check':
 					check();
@@ -1197,6 +1339,11 @@
 		// their token; there is nothing to look up for them before that.
 		if ( ! T.draft && ! GUEST ) {
 			syncOnLoad();
+		}
+		// A link from the result email: the server has checked the token is
+		// a finished attempt of this test that this visitor may see.
+		if ( ! T.draft && /^[a-f0-9]{32}$/.test( String( data.openResult || '' ) ) ) {
+			showResult( data.openResult );
 		}
 	}
 

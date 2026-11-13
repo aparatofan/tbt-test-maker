@@ -5,7 +5,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 ## Start here
 
 - Work from the task, not from a full-repository scan.
-- The current release is specified in `docs/SPEC-0.3.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
+- The current release is specified in `docs/SPEC-0.4.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
 - `docs/prototypes/*.html` are the approved designs. Where the spec and a prototype disagree, the spec wins; where the spec is silent, the prototype decides.
 - First inspect `git status`, then read only the files named in the task or located by targeted search.
 - Do not change unrelated code, formatting, wording, or styling.
@@ -16,7 +16,8 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 - Pure PHP + vanilla JavaScript. No jQuery, build system, CDN, Composer, or npm dependency.
 - Main bootstrap: `tbt-test-maker.php`. Server-side logic: `includes/`. Assets: `assets/`. Standalone tests: `tests/`.
 - Class and constant prefix `TBTTM_`, function and option prefix `tbttm_`, CSS class prefix `tbttm-`. TBT Hub's site-wide sheet claims unprefixed `.tbt-*` names; never use them.
-- `assets/css/tbt-tokens.css` is a vendored copy of the shared TBT tokens. Never edit a value in it. No stylesheet in this plugin defines a colour of its own.
+- `includes/lib/tfpdf/` is the vendored PDF library (tFPDF, LGPL) and `assets/fonts/*.ttf` are the vendored certificate fonts (Apache 2.0), each with its licence text. Never edit them; what the plugin adds lives in `includes/class-tbttm-pdf.php`.
+- `assets/css/tbt-tokens.css` is a vendored copy of the shared TBT tokens. Never edit a value in it. No stylesheet in this plugin defines a colour of its own. The one exception to "no colour values" is the constants in `TBTTM_Certificate` and `TBTTM_Mail`: a PDF and an email cannot read tokens.
 
 ## Architecture to preserve
 
@@ -26,6 +27,8 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 - There is no public read route for test content. Students get questions only inside the server-rendered student page, after the access check.
 - A finished attempt stores a snapshot of what the student saw, so later edits to a test never change old results.
 - Results are owner-only and always read from the stored snapshot. Review entries carry the question `id` from 0.3.0; older ones do not.
+- The certificate and the result email are extras: a failure in either never blocks or delays a finish. Certificates are built on demand and never stored.
+- An attempt moves to finished through one conditional write (`WHERE status = 'in_progress'`). Only the request that makes it fires `tbttm_attempt_finished`.
 - A guest attempt (`user_id = 0`) is owned by its token, sent in `X-TBTTM-Token`. Guests never get a nonce.
 - TBT Notes and TBT Hub are optional. The plugin must work when they are absent.
 - Teacher-page lists and mutations are owner-scoped, including for administrators.
@@ -45,6 +48,8 @@ for f in tbt-test-maker.php includes/*.php; do php -l "$f"; done
 for f in assets/js/*.js; do node --check "$f"; done
 php tests/test-validator.php
 php tests/test-results.php
+php tests/test-certificate.php
+php tests/test-finish.php
 node tests/test-parse.js
 ```
 
