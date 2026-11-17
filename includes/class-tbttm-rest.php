@@ -162,6 +162,20 @@ class TBTTM_Rest {
 			)
 		);
 
+		// Teacher Mode on the student page: the answer key of a published
+		// test. NOT owner-scoped, on purpose: a teacher runs lessons with
+		// tests someone else made. This is the only teacher route without
+		// owner scoping. It is read-only and writes and logs nothing.
+		register_rest_route(
+			self::NS,
+			'/tests/(?P<id>\d+)/key',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'permission_callback' => $teacher,
+				'callback'            => array( $this, 'get_answer_key' ),
+			)
+		);
+
 		register_rest_route(
 			self::NS,
 			'/classes/(?P<id>\d+)/lessons',
@@ -1320,6 +1334,29 @@ class TBTTM_Rest {
 			return new WP_Error( 'tbttm_no_result', __( 'That result is not available.', 'tbt-test-maker' ), array( 'status' => 404 ) );
 		}
 		return rest_ensure_response( TBTTM_Attempts::result( $attempt, TBTTM_DB::get_test( (int) $attempt->test_id ) ) );
+	}
+
+	/**
+	 * The answer key of a published test, for Teacher Mode. Any test
+	 * manager, not only the owner (see register_routes()). A draft and an
+	 * unknown test get the same 404, so the answer never reveals that a
+	 * draft exists. Nothing is written: no attempt, no log.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function get_answer_key( WP_REST_Request $request ) {
+		nocache_headers();
+		$test = TBTTM_DB::get_test( (int) $request['id'] );
+		if ( ! $test || TBTTM_DB::STATUS_PUBLISHED !== $test->status ) {
+			return new WP_Error( 'tbttm_no_key', __( 'This test is not available.', 'tbt-test-maker' ), array( 'status' => 404 ) );
+		}
+		return rest_ensure_response(
+			array(
+				'test' => (int) $test->id,
+				'key'  => TBTTM_Attempts::answer_key( TBTTM_DB::get_questions( (int) $test->id ) ),
+			)
+		);
 	}
 
 	/**

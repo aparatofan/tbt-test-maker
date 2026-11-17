@@ -15,6 +15,12 @@
  * A guest on an open test has no login and no nonce. Their attempt is owned
  * by its token, which this page keeps in localStorage and sends in the
  * X-TBTTM-Token header; that is also how the same browser carries on later.
+ *
+ * Teacher Mode (0.7.0): a test manager sees a Learner | Teacher switch. The
+ * page always opens in Learner Mode. Teacher Mode is a separate view with
+ * the correct answers marked; it fetches the answer key once from
+ * tests/{id}/key and sends nothing else. It never touches the learner's
+ * state: the attempt, the answers and their autosave carry on as they were.
  */
 ( function () {
 	'use strict';
@@ -318,6 +324,13 @@
 		var presenceTimer = null;
 		var startedAt = 0;
 
+		// Teacher Mode: only for a test manager on a published test. The
+		// mode is remembered on this device, but the page always opens in
+		// Learner Mode, so a test on a shared screen never shows the
+		// answers by surprise.
+		var TEACHER = !! data.teacher;
+		var MODE_KEY = 'tbttm:mode';
+
 		var s = {
 			view: 'start',
 			i: 0,
@@ -345,6 +358,15 @@
 			emailError: false,
 			certBusy: false,
 			certError: false,
+			// Teacher Mode, in memory only. None of it is saved or sent.
+			mode: 'learner',    // 'learner' | 'teacher'
+			key: null,          // question ID → key entry, once fetched
+			keyBusy: false,
+			keyError: false,
+			kview: 'start',     // the key view's own screen: 'start' | 'quiz'
+			ki: 0,              // the question shown in Teacher Mode
+			kpage: 0,
+			back: 'start',      // the learner view Teacher Mode was opened from
 		};
 		var saveTimer = null;
 		var retryTimer = null;
@@ -449,7 +471,7 @@
 
 		/** Present now, then every 20 seconds while a question is showing. */
 		function startPresence() {
-			if ( presenceTimer || ! CFG.activityBase || ! activity ) {
+			if ( presenceTimer || ! CFG.activityBase || ! activity || s.mode === 'teacher' ) {
 				return;
 			}
 			postActivity( '/presence', {} );
@@ -1609,12 +1631,256 @@
 			return html;
 		}
 
+		/* ----- Teacher Mode ----- */
+
+		/**
+		 * The Learner | Teacher switch, at the top of every screen, for a
+		 * test manager only.
+		 */
+		function modebar() {
+			if ( ! TEACHER ) {
+				return '';
+			}
+			var teaching = s.mode === 'teacher';
+			return '<div class="tbttm-modebar">'
+				+ '<div class="tbttm-seg" role="group" aria-label="Mode">'
+				+ '<button type="button" class="tbttm-seg__btn" data-mode="learner" aria-pressed="' + ! teaching + '">Learner</button>'
+				+ '<button type="button" class="tbttm-seg__btn" data-mode="teacher" aria-pressed="' + teaching + '">Teacher</button>'
+				+ '</div>'
+				+ ( teaching ? '<span class="tbttm-tnote">Answers are showing · nothing is saved</span>' : '' )
+				+ '<span class="tbttm-spacer"></span>'
+				+ ( teaching && s.kview === 'quiz' && s.key && N > 1 ? '<span class="tbttm-modebar__hint">← → to move between questions</span>' : '' )
+				+ '</div>';
+		}
+
+		/** The one request Teacher Mode makes: the answer key, once per page load. */
+		function loadKey() {
+			if ( s.key || s.keyBusy ) {
+				return;
+			}
+			s.keyBusy = true;
+			s.keyError = false;
+			render();
+			call( 'GET', 'tests/' + T.id + '/key' ).then( function ( res ) {
+				var map = {};
+				( res && Array.isArray( res.key ) ? res.key : [] ).forEach( function ( k ) {
+					if ( k && k.id !== undefined ) {
+						map[ k.id ] = k;
+					}
+				} );
+				s.key = map;
+				s.keyBusy = false;
+				render();
+			}, function () {
+				s.keyBusy = false;
+				s.keyError = true;
+				render();
+			} );
+		}
+
+		/**
+		 * Switch between Learner and Teacher. Nothing of the learner's state
+		 * changes: going back shows the learner view as it is at that moment.
+		 */
+		function setMode( mode ) {
+			mode = mode === 'teacher' ? 'teacher' : 'learner';
+			if ( ! TEACHER || mode === s.mode ) {
+				return;
+			}
+			store( function ( ls ) {
+				ls.setItem( MODE_KEY, mode );
+			} );
+			if ( mode === 'teacher' ) {
+				// Leaving a learner question: what is waiting goes now, as
+				// when the student leaves the page.
+				if ( s.view === 'quiz' ) {
+					flush();
+				}
+				stopPresence();
+				s.back = s.view;
+				if ( s.back === 'quiz' ) {
+					s.ki = s.i;
+					s.kview = 'quiz';
+				} else if ( s.back === 'result' ) {
+					s.ki = 0;
+					s.kview = 'quiz';
+				}
+				// From the start screen, s.kview stays as it was: the key's
+				// own start screen until SHOW THE ANSWERS has been pressed.
+				s.ki = Math.max( 0, Math.min( N - 1, s.ki ) );
+				s.kpage = Math.floor( s.ki / per() );
+				s.mode = 'teacher';
+				render();
+				loadKey();
+			} else {
+				s.mode = 'learner';
+				render();
+				if ( s.view === 'quiz' && s.attempt ) {
+					startPresence();
+				}
+			}
+			var pressed = root.querySelector( '[data-mode="' + mode + '"]' );
+			if ( pressed ) {
+				pressed.focus( { preventScroll: true } );
+			}
+		}
+
+		function kgo( i ) {
+			s.ki = Math.max( 0, Math.min( N - 1, i ) );
+			s.kpage = Math.floor( s.ki / per() );
+			render();
+		}
+
+		/** The key view's start screen. */
+		function keyStartScreen() {
+			var html = '<header class="tbttm-start">'
+				+ '<h2 class="tbttm-stage__title">Answer key</h2>'
+				+ '<p class="tbttm-muted tbttm-keylead">Go through the test with the correct answers already marked. Your students’ results are not affected.</p>'
+				+ '</header>';
+			if ( ! N ) {
+				return html + '<p class="tbttm-muted">This test has no questions yet.</p>';
+			}
+			var size = sizeText( N ).split( ' ' );
+			return html + '<ul class="tbttm-facts"><li class="tbttm-chip"><strong>' + size[ 0 ] + '</strong> ' + size[ 1 ] + '</li></ul>'
+				+ '<div class="tbttm-row tbttm-start__actions">'
+				+ '<button class="tbttm-btn tbttm-btn--cta" type="button" data-act="key-show">Show the answers</button></div>';
+		}
+
+		/** The tiles of the key view: the same paging, every tile neutral. */
+		function keyTiles() {
+			var n = per();
+			var pages = Math.ceil( N / n );
+			var page = Math.min( pages - 1, Math.max( 0, s.kpage ) );
+			var from = page * n;
+			var to = Math.min( N, from + n );
+			var html = '<div class="tbttm-tiles">';
+			if ( pages > 1 ) {
+				html += '<button type="button" class="tbttm-tiles__page" data-kpage="' + ( page - 1 ) + '"' + ( page === 0 ? ' disabled' : '' ) + ' aria-label="Earlier questions">‹</button>';
+			}
+			html += '<div class="tbttm-tiles__row" style="grid-template-columns:repeat(' + n + ',minmax(0,1fr))" aria-label="Questions ' + ( from + 1 ) + ' to ' + to + ' of ' + N + '">';
+			for ( var k = 0; k < n; k++ ) {
+				var i = from + k;
+				if ( i >= N ) {
+					html += '<span class="tbttm-tile tbttm-tile--gap" aria-hidden="true"></span>';
+					continue;
+				}
+				html += '<button type="button" class="tbttm-tile' + ( i === s.ki ? ' is-here' : '' ) + '" data-kgo="' + i + '"'
+					+ ' aria-label="Question ' + ( i + 1 ) + '"' + ( i === s.ki ? ' aria-current="step"' : '' ) + '>' + ( i + 1 ) + '</button>';
+			}
+			html += '</div>';
+			if ( pages > 1 ) {
+				html += '<button type="button" class="tbttm-tiles__page" data-kpage="' + ( page + 1 ) + '"' + ( page === pages - 1 ? ' disabled' : '' ) + ' aria-label="Later questions">›</button>';
+			}
+			return html + '</div>';
+		}
+
+		/** One gap of the key: the main answer in a green chip, the others after " / ". */
+		function keyGap( accepted ) {
+			var list = Array.isArray( accepted ) ? accepted.map( String ) : [];
+			if ( ! list.length ) {
+				return '<span class="tbttm-keygap">…</span>';
+			}
+			return '<span class="tbttm-keygap">' + esc( list[ 0 ] )
+				+ ( list.length > 1 ? ' <span class="tbttm-keygap__alt">/ ' + list.slice( 1 ).map( esc ).join( ' / ' ) + '</span>' : '' )
+				+ '</span>';
+		}
+
+		/** The key view's question: the learner layout, read-only, answers marked. */
+		function keyQuestionScreen() {
+			var q = Q[ s.ki ];
+			var k = s.key[ q.id ] || null;
+			var last = s.ki === N - 1;
+			var html = '';
+			if ( ! ONE ) {
+				html += '<div class="tbttm-prog">' + keyTiles()
+					+ '<div class="tbttm-count"><span>Question ' + ( s.ki + 1 ) + ' of ' + N + '</span></div></div>'
+					+ '<p class="tbttm-qnum">' + ( s.ki + 1 ) + '.</p>';
+			}
+			if ( isGap( q ) ) {
+				var gaps = k && k.type === 'gap' && Array.isArray( k.gaps ) ? k.gaps : [];
+				html += ( ONE ? '<p class="tbttm-muted tbttm-ask">Type the missing ' + ( q.gaps === 1 ? 'word' : 'words' ) + ' into the text.</p>' : '' )
+					+ '<div class="tbttm-qbody tbttm-qbody--gaps tbttm-qbody--key">' + formatGaps( q.body, q.gaps, function ( g ) {
+						return keyGap( gaps[ g ] );
+					} ) + '</div>';
+			} else {
+				// No key entry (a question without a correct answer): no mark.
+				var right = k && k.type === 'choice' ? k.correct : -1;
+				html += '<div class="tbttm-qbody">' + formatBody( q.body ) + '</div>'
+					+ '<div class="tbttm-opts is-locked is-key" role="list" aria-label="Answers">';
+				q.options.forEach( function ( o, n ) {
+					var ok = n === right;
+					html += '<div class="tbttm-opt' + ( ok ? ' is-right' : '' ) + '" role="listitem">'
+						+ '<span class="tbttm-opt__letter">' + LETTERS[ n ] + '</span>'
+						+ '<span>' + esc( o ) + '</span>'
+						+ ( ok ? '<span class="tbttm-opt__tag">✓ Correct</span>' : '' ) + '</div>';
+				} );
+				html += '</div>';
+			}
+			var next = '';
+			if ( ! ONE ) {
+				next = last
+					? '<button class="tbttm-btn" type="button" data-act="key-first">Back to question 1</button>'
+					: '<button class="tbttm-btn tbttm-btn--primary" type="button" data-act="key-next">Next question</button>';
+			}
+			html += '<div class="tbttm-row">' + ( ONE ? '' : '<button class="tbttm-btn" type="button" data-act="key-back"' + ( s.ki === 0 ? ' disabled' : '' ) + '>Back</button>' )
+				+ '<span class="tbttm-spacer"></span>' + next + '</div>';
+			return html;
+		}
+
+		/** Teacher Mode: an error, loading, the key's start screen or a question. */
+		function keyScreen() {
+			if ( s.keyError ) {
+				return '<div class="tbttm-notice tbttm-notice--error" role="alert"><p>We couldn’t load the answers. Try again.</p>'
+					+ '<button class="tbttm-btn" type="button" data-act="key-retry">Try again</button></div>';
+			}
+			if ( ! s.key ) {
+				return '<p class="tbttm-muted">Loading the answers…</p>';
+			}
+			return s.kview === 'quiz' && N ? keyQuestionScreen() : keyStartScreen();
+		}
+
+		/** Clicks in Teacher Mode: its own actions only, never the learner's. */
+		function keyClick( b ) {
+			if ( b.dataset.kpage !== undefined ) {
+				s.kpage = +b.dataset.kpage;
+				render();
+				return;
+			}
+			if ( b.dataset.kgo !== undefined ) {
+				kgo( +b.dataset.kgo );
+				return;
+			}
+			switch ( b.dataset.act ) {
+				case 'key-show':
+					s.kview = 'quiz';
+					kgo( 0 );
+					break;
+				case 'key-next':
+					kgo( s.ki + 1 );
+					break;
+				case 'key-back':
+					kgo( s.ki - 1 );
+					break;
+				case 'key-first':
+					kgo( 0 );
+					break;
+				case 'key-retry':
+					loadKey();
+					break;
+			}
+		}
+
 		function render() {
+			var teaching = TEACHER && s.mode === 'teacher';
 			var shell = root.closest( '.tbttm' );
 			if ( shell ) {
-				shell.classList.toggle( 'is-started', s.view !== 'start' );
+				shell.classList.toggle( 'is-started', teaching ? s.kview === 'quiz' : s.view !== 'start' );
 			}
-			root.innerHTML = s.view === 'quiz' ? questionScreen() : s.view === 'result' ? resultScreen() : startScreen();
+			root.classList.toggle( 'is-teacher', teaching );
+			// The mode decides first: whatever the server answers for the
+			// learner while Teacher Mode is open, the key view stays.
+			root.innerHTML = modebar() + ( teaching ? keyScreen()
+				: s.view === 'quiz' ? questionScreen() : s.view === 'result' ? resultScreen() : startScreen() );
 		}
 
 		/* ----- events ----- */
@@ -1698,6 +1964,14 @@
 			if ( ! b || ! root.contains( b ) || b.disabled ) {
 				return;
 			}
+			if ( b.dataset.mode !== undefined ) {
+				setMode( b.dataset.mode );
+				return;
+			}
+			if ( s.mode === 'teacher' ) {
+				keyClick( b );
+				return;
+			}
 			if ( b.dataset.page !== undefined ) {
 				s.page = +b.dataset.page;
 				render();
@@ -1751,9 +2025,34 @@
 			}
 		} );
 
+		// ← and → in the key view only, never while typing, and never with a
+		// modifier held (Alt+← is the browser's Back).
+		document.addEventListener( 'keydown', function ( e ) {
+			if ( s.mode !== 'teacher' || s.kview !== 'quiz' || ! s.key || N < 2 ) {
+				return;
+			}
+			if ( e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented ) {
+				return;
+			}
+			if ( e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' ) {
+				return;
+			}
+			var t = e.target;
+			if ( t && ( t.isContentEditable || ( t.matches && t.matches( 'input, select, textarea' ) ) ) ) {
+				return;
+			}
+			e.preventDefault();
+			kgo( s.ki + ( e.key === 'ArrowRight' ? 1 : -1 ) );
+		} );
+
 		PHONE.addEventListener( 'change', function () {
 			if ( s.view === 'quiz' ) {
 				go( s.i );
+			}
+			if ( s.mode === 'teacher' ) {
+				s.kpage = Math.floor( s.ki / per() );
+			}
+			if ( s.view === 'quiz' || s.mode === 'teacher' ) {
 				render();
 			}
 		} );

@@ -347,6 +347,9 @@ class TBTTM_Player {
 			'askEmail'   => $is_guest && ! $is_draft && ! empty( $test->email_result ),
 			// The result a link from the email asks for, opened on load.
 			'openResult' => $is_draft ? '' : $open_result,
+			// Teacher Mode: the switch shows only for test managers. The answer key is
+			// not in the page; the player fetches it from tests/{id}/key on demand.
+			'teacher'    => ! $is_guest && ! $is_draft && TBTTM_Capabilities::user_can_manage(),
 		);
 
 		// Only a logged-in student on a published test reports to Class

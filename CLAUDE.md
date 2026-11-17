@@ -5,7 +5,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 ## Start here
 
 - Work from the task, not from a full-repository scan.
-- The current release is specified in `docs/SPEC-0.6.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
+- The current release is specified in `docs/SPEC-0.7.0.md`. Follow it in order. Phase 0 is read-only and ends with a report; do not edit anything before Mariusz answers it.
 - `docs/prototypes/*.html` are the approved designs. Where the spec and a prototype disagree, the spec wins; where the spec is silent, the prototype decides.
 - First inspect `git status`, then read only the files named in the task or located by targeted search.
 - Do not change unrelated code, formatting, wording, or styling.
@@ -22,7 +22,7 @@ Keep this file concise. It is loaded at the start of every Claude Code session.
 ## Architecture to preserve
 
 - The student page (`[tbt_test]`) and the teacher page (`[tbt_test_maker]`) are separate surfaces with separate assets (`player.*` vs `teacher.*`).
-- **The answer key never reaches the browser before the attempt is finished.** Scoring happens on the server. In "after each question" mode the server reveals one answer at a time, after it has stored the student's choice.
+- **The answer key never reaches a student's browser before the attempt is finished.** The one exception is Teacher Mode: a test manager fetches it from `tests/{id}/key`, which is published-only and never printed into the page. Scoring happens on the server. In "after each question" mode the server reveals one answer at a time, after it has stored the student's choice.
 - **A student's answers are never lost.** Every answer is saved to the server as it is given and mirrored in the browser. A failed request keeps the answers and retries; it never clears state or navigates away.
 - A gap question's stored body holds its answers. The student page only ever receives `TBTTM_Gaps::public_body()`. Scores count points: one per multiple choice question, one per gap.
 - There is no public read route for test content. Students get questions only inside the server-rendered student page, after the access check.
@@ -52,6 +52,7 @@ php tests/test-validator.php
 php tests/test-results.php
 php tests/test-certificate.php
 php tests/test-finish.php
+php tests/test-answer-key.php
 node tests/test-parse.js
 ```
 

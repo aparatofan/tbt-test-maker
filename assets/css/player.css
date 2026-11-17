@@ -867,3 +867,154 @@
 		animation: none;
 	}
 }
+
+/* ---------- Teacher Mode (0.7.0) ----------
+   Follows docs/prototypes/teacher-mode.html, with the spec's tokens. Only a
+   test manager sees the switch; Teacher Mode frames the card in blue and
+   shows the answers read-only. */
+
+.tbttm .tbttm-modebar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 16px;
+}
+
+/* The cover runs to the card's edges, but never over the switch. */
+.tbttm .tbttm-modebar + .tbttm-cover {
+	margin-top: 0;
+}
+
+.tbttm .tbttm-seg {
+	display: inline-flex;
+	padding: 4px;
+	border: 1px solid var(--tbt-border);
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-input);
+}
+
+.tbttm .tbttm-seg .tbttm-seg__btn {
+	height: 32px;
+	margin: 0;
+	padding: 0 16px;
+	border: 0;
+	border-radius: var(--tbt-radius-pill);
+	background: none;
+	box-shadow: none;
+	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 32px;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+
+.tbttm .tbttm-seg .tbttm-seg__btn:not([aria-pressed="true"]):hover {
+	background: none;
+	color: var(--tbt-blue-dark);
+}
+
+.tbttm .tbttm-seg .tbttm-seg__btn[aria-pressed="true"],
+.tbttm .tbttm-seg .tbttm-seg__btn[aria-pressed="true"]:hover {
+	background: var(--tbt-blue);
+	color: var(--tbt-surface);
+}
+
+.tbttm .tbttm-seg .tbttm-seg__btn:focus-visible {
+	box-shadow: var(--tbt-focus-ring);
+	outline: none;
+}
+
+.tbttm .tbttm-tnote {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	border-radius: var(--tbt-radius-pill);
+	background: var(--tbt-selected-bg);
+	color: var(--tbt-blue-dark);
+	font-family: var(--tbt-font-ui);
+	font-size: 13px;
+}
+
+.tbttm .tbttm-tnote::before {
+	content: "";
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--tbt-blue);
+}
+
+.tbttm .tbttm-modebar__hint {
+	color: var(--tbt-muted);
+	font-family: var(--tbt-font-ui);
+	font-size: 13px;
+}
+
+/* The frame: a blue border and an extra ring over the card's own shadow. */
+.tbttm .tbttm-player {
+	transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.tbttm .tbttm-player.is-teacher {
+	border-color: var(--tbt-blue);
+	box-shadow: 0 0 0 4px var(--tbt-selected-bg), var(--tbt-shadow);
+}
+
+.tbttm .tbttm-keylead {
+	margin: 0;
+}
+
+/* Multiple choice, read-only: a letter, the option, the key marked. */
+.tbttm .tbttm-opts.is-key .tbttm-opt,
+.tbttm .tbttm-opts.is-key .tbttm-opt:hover {
+	cursor: default;
+}
+
+.tbttm .tbttm-opts.is-key .tbttm-opt:not(.is-right):hover {
+	background: var(--tbt-surface);
+}
+
+.tbttm .tbttm-opt__letter {
+	flex: none;
+	width: 20px;
+	color: var(--tbttm-faint);
+	font-family: var(--tbt-font-ui);
+	font-size: 15px;
+	font-weight: 600;
+	text-align: center;
+}
+
+.tbttm .tbttm-opt.is-right .tbttm-opt__letter {
+	color: var(--tbt-success);
+}
+
+/* Gap-fill: each gap shows its answer in a green chip, the other accepted
+   answers lighter after " / ". */
+.tbttm .tbttm-keygap {
+	display: inline-block;
+	margin: 0 2px;
+	padding: 0 10px;
+	border: 1px solid var(--tbt-success);
+	border-bottom-width: 2px;
+	border-radius: 8px;
+	background: var(--tbt-success-bg);
+	color: var(--tbt-success);
+	font-family: var(--tbt-font-content);
+	font-weight: 600;
+	line-height: 1.7;
+}
+
+.tbttm .tbttm-keygap__alt {
+	font-weight: 400;
+	opacity: .8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tbttm .tbttm-player {
+		transition: none;
+	}
+}
