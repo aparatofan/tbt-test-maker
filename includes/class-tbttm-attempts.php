@@ -53,6 +53,46 @@ class TBTTM_Attempts {
 	}
 
 	/**
+	 * The answer key, for Teacher Mode only: one entry per question, in
+	 * order. A multiple choice question gives its correct option's index; a
+	 * gap question one list of accepted answers per gap, in body order, the
+	 * first shown as the main answer. A multiple choice question without a
+	 * key is left out, so the page shows no mark for it.
+	 *
+	 * Served only by the manager-only tests/{id}/key route. Never printed
+	 * into the student page.
+	 *
+	 * @param array[] $questions From TBTTM_DB::get_questions().
+	 * @return array[]
+	 */
+	public static function answer_key( array $questions ) {
+		$out = array();
+		foreach ( $questions as $q ) {
+			if ( self::is_gap( $q ) ) {
+				$gaps = array();
+				foreach ( (array) ( isset( $q['gaps'] ) ? $q['gaps'] : array() ) as $accepted ) {
+					$gaps[] = array_values( array_map( 'strval', (array) $accepted ) );
+				}
+				$out[] = array(
+					'id'   => (int) $q['id'],
+					'type' => 'gap',
+					'gaps' => $gaps,
+				);
+				continue;
+			}
+			if ( ! isset( $q['correct'] ) || null === $q['correct'] ) {
+				continue;
+			}
+			$out[] = array(
+				'id'      => (int) $q['id'],
+				'type'    => 'choice',
+				'correct' => (int) $q['correct'],
+			);
+		}
+		return $out;
+	}
+
+	/**
 	 * Whether a question from TBTTM_DB::get_questions() is fill in the gaps.
 	 * A question without a type is multiple choice.
 	 *
